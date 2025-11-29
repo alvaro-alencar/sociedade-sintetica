@@ -38,7 +38,9 @@ import { ReputationRecord } from './database/entities/reputation-record.entity';
         Match,
         ReputationRecord,
       ],
-      synchronize: true, // Only for dev!
+      // ✅ CORREÇÃO: synchronize apenas em desenvolvimento
+      // Em produção, usar migrations para evitar perda de dados
+      synchronize: process.env.NODE_ENV !== 'production',
     }),
     AuthModule,
     AccountsModule,

@@ -1,4 +1,5 @@
-const API_URL = 'http://localhost:3000';
+// ✅ CORREÇÃO: Usa variável de ambiente, fallback para localhost
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
 let token: string | null = null;
 
@@ -27,7 +28,10 @@ export async function apiFetch(endpoint: string, options: RequestInit = {}) {
     headers['Authorization'] = `Bearer ${t}`;
   }
 
-  const res = await fetch(`${API_URL}${endpoint}`, {
+  // ✅ CORREÇÃO: Remove barra inicial se houver para evitar // duplo
+  const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+
+  const res = await fetch(`${API_URL}${cleanEndpoint}`, {
     ...options,
     headers,
   });
@@ -37,5 +41,11 @@ export async function apiFetch(endpoint: string, options: RequestInit = {}) {
     throw new Error(error || res.statusText);
   }
 
-  return res.json();
+  // ✅ CORREÇÃO: Trata respostas vazias (alguns endpoints não retornam JSON)
+  try {
+    return await res.json();
+  } catch {
+    return null;
+  }
 }
+

@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { OpenAIProvider } from './providers/openai.provider';
+import { OpenRouterProvider } from './providers/openrouter.provider';
 
 export interface LLMRequest {
   provider: 'openai' | 'google' | 'deepseek' | 'grok' | 'custom';
@@ -30,21 +31,30 @@ export class LLMConnectorService {
 
   /**
    * Handle OpenAI requests - uses real API if key is available, otherwise falls back to mock
+   * Supports both OpenAI direct and OpenRouter (aggregator)
    */
   private async handleOpenAI(request: LLMRequest): Promise<LLMResponse> {
-    const apiKey = process.env.OPENAI_API_KEY;
+    // Check for OpenRouter first (preferred - gives access to multiple models)
+    const openRouterKey = process.env.OPENROUTER_API_KEY;
+    const openAiKey = process.env.OPENAI_API_KEY;
 
-    if (!apiKey) {
-      console.warn('[LLMConnector] OPENAI_API_KEY not set, using mock response');
+    if (!openRouterKey && !openAiKey) {
+      console.warn('[LLMConnector] No API key set (OPENROUTER_API_KEY or OPENAI_API_KEY), using mock response');
       return this.mockOpenAI(request);
     }
 
     try {
-      console.log('[LLMConnector] Using real OpenAI API');
-      const provider = new OpenAIProvider(apiKey);
-      return await provider.complete(request);
+      if (openRouterKey) {
+        console.log('[LLMConnector] Using OpenRouter API (access to multiple models)');
+        const provider = new OpenRouterProvider(openRouterKey);
+        return await provider.complete(request);
+      } else {
+        console.log('[LLMConnector] Using real OpenAI API');
+        const provider = new OpenAIProvider(openAiKey!);
+        return await provider.complete(request);
+      }
     } catch (error) {
-      console.error('[LLMConnector] OpenAI API call failed, falling back to mock:', error);
+      console.error('[LLMConnector] API call failed, falling back to mock:', error);
       return this.mockOpenAI(request);
     }
   }

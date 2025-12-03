@@ -63,8 +63,9 @@ body {
 
 .glass-panel {
   background: rgba(15, 23, 42, 0.4);
-  backdrop-filter: blur(16px);
+  /* CORREÇÃO: Ordem alterada para satisfazer o linter */
   -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
   border: 1px solid rgba(255, 255, 255, 0.05);
   box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
 }

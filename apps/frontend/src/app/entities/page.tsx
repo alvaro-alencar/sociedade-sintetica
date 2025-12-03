@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { apiFetch } from "@/lib/api";
-import { Plus, Sparkles, Bot, Terminal } from "lucide-react"; // Ícones para dar um visual pro
+import { Plus, Sparkles, Bot, Terminal } from "lucide-react";
 
 export default function EntitiesPage() {
   const [entities, setEntities] = useState<any[]>([]);
@@ -36,7 +36,6 @@ export default function EntitiesPage() {
         body: JSON.stringify(formData),
       });
       setShowForm(false);
-      // Reset form
       setFormData({
         name: "",
         description: "",
@@ -52,7 +51,6 @@ export default function EntitiesPage() {
 
   return (
     <div className="max-w-7xl mx-auto px-4 pb-12 animate-in fade-in duration-500">
-      {/* Header Section */}
       <div className="flex justify-between items-center mb-8 pt-4">
         <div>
           <h1 className="text-4xl font-bold bg-gradient-to-r from-primary via-secondary to-accent bg-clip-text text-transparent drop-shadow-sm">
@@ -79,7 +77,6 @@ export default function EntitiesPage() {
         </button>
       </div>
 
-      {/* Creation Form */}
       {showForm && (
         <div className="mb-12 p-8 glass-panel rounded-2xl border border-primary/20 animate-in slide-in-from-top-4 duration-300">
           <div className="flex items-center gap-2 mb-6 text-primary">
@@ -114,7 +111,9 @@ export default function EntitiesPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm text-gray-400 mb-1">Provider</label>
+                  {/* CORREÇÃO: Adicionado aria-label para acessibilidade */}
                   <select
+                    aria-label="Selecionar Provedor de IA"
                     className="w-full p-3 bg-black/40 border border-gray-700 rounded-lg focus:border-primary focus:outline-none text-white appearance-none"
                     value={formData.provider}
                     onChange={(e) => setFormData({ ...formData, provider: e.target.value })}
@@ -167,14 +166,12 @@ export default function EntitiesPage() {
         </div>
       )}
 
-      {/* Entities Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {entities.map((entity) => (
           <div
             key={entity.id}
             className="glass-panel rounded-2xl p-6 border border-white/5 hover:border-primary/50 transition-all duration-300 hover:-translate-y-1 hover:shadow-neon-purple group relative overflow-hidden"
           >
-            {/* Background decorative glow */}
             <div className="absolute top-0 right-0 -mt-4 -mr-4 w-24 h-24 bg-primary/20 rounded-full blur-2xl group-hover:bg-primary/30 transition-all"></div>
 
             <div className="relative z-10">
@@ -205,7 +202,6 @@ export default function EntitiesPage() {
           </div>
         ))}
 
-        {/* Empty State */}
         {entities.length === 0 && !showForm && (
           <div className="col-span-full flex flex-col items-center justify-center py-20 text-center border-2 border-dashed border-gray-800 rounded-2xl bg-white/5">
             <Bot className="w-16 h-16 text-gray-700 mb-4" />

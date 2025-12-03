@@ -23,26 +23,29 @@ export class ConversationsService {
     const thread = this.threadsRepository.create({
       title: data.title,
       participants: data.participantIds || [],
+      isSimulationActive: true, // Nasce ativa
     });
     const savedThread = await this.threadsRepository.save(thread);
 
     // 2. O BIG BANG: O Sistema injeta o título como o tópico inicial
-    const initialContent = `TÓPICO DE DEBATE: "${data.title}".
-    DIRETRIZES: Debatam este tema profundamente. Sejam diretos, questionem uns aos outros. Não ajam como assistentes, ajam como pensadores autônomos com suas próprias personalidades. Busquem um consenso ou exponham contradições.`;
+    if (data.title) {
+      const initialContent = `TÓPICO DE DEBATE: "${data.title}".
+      DIRETRIZES: Debatam este tema profundamente. Sejam diretos, questionem uns aos outros. Não ajam como assistentes, ajam como pensadores autônomos com suas próprias personalidades. Busquem um consenso ou exponham contradições.`;
 
-    const systemMessage = this.messagesRepository.create({
-      threadId: savedThread.id,
-      senderId: 'SYSTEM', // Identificador especial
-      content: initialContent,
-      metadata: { type: 'system_injection' }
-    });
-    await this.messagesRepository.save(systemMessage);
+      const systemMessage = this.messagesRepository.create({
+        threadId: savedThread.id,
+        senderId: 'SYSTEM',
+        content: initialContent,
+        metadata: { type: 'system_injection' }
+      });
+      await this.messagesRepository.save(systemMessage);
 
-    // 3. Acorda TODOS os participantes (ou todos do sistema se a lista for vazia)
-    // Usamos setImmediate para não travar a resposta HTTP
-    setImmediate(() => {
-      this.igniteDebate(savedThread.id, 'SYSTEM');
-    });
+      // 3. Acorda TODOS os participantes (Big Bang)
+      // Usamos setImmediate para não travar a resposta HTTP
+      setTimeout(() => {
+        this.igniteDebate(savedThread.id, 'SYSTEM');
+      }, 1000);
+    }
 
     return savedThread;
   }
@@ -64,10 +67,36 @@ export class ConversationsService {
     });
     const savedMessage = await this.messagesRepository.save(message);
 
-    // Dispara reação
-    this.igniteDebate(threadId, senderId);
+    // Dispara reação se for broadcast
+    if (target === 'broadcast') {
+      this.igniteDebate(threadId, senderId);
+    }
 
     return savedMessage;
+  }
+
+  // ✅ Toggle Pause/Resume
+  async toggleSimulation(threadId: string, active: boolean): Promise<Thread> {
+    const thread = await this.threadsRepository.findOne({ where: { id: threadId } });
+    if (!thread) throw new Error('Thread not found');
+
+    thread.isSimulationActive = active;
+    const saved = await this.threadsRepository.save(thread);
+
+    console.log(`[Debate] Thread ${threadId} status: ${active ? 'RESUMED' : 'PAUSED'}`);
+
+    // Se reativou, precisa dar um "tranco" no motor novamente para ele não ficar parado
+    if (active) {
+      // Pega a última mensagem para saber quem falou por último e continuar dali
+      const lastMessage = await this.messagesRepository.findOne({
+        where: { threadId },
+        order: { createdAt: 'DESC' }
+      });
+      const lastSpeaker = lastMessage ? lastMessage.senderId : 'SYSTEM';
+      this.igniteDebate(threadId, lastSpeaker);
+    }
+
+    return saved;
   }
 
   /**
@@ -75,27 +104,35 @@ export class ConversationsService {
    * Decide quem fala a seguir.
    */
   private async igniteDebate(threadId: string, lastSpeakerId: string) {
-    const allEntities = await this.entitiesService.findAll();
+    // 1. Checagem de Segurança: A simulação está ativa?
+    const thread = await this.threadsRepository.findOne({ where: { id: threadId } });
+    if (!thread || !thread.isSimulationActive) {
+      console.log(`[Debate] Simulação pausada ou encerrada na thread ${threadId}.`);
+      return; // PÁRA TUDO
+    }
 
-    // Se quem falou foi o SYSTEM, TODOS devem tentar responder (início do debate)
+    const allEntities = await this.entitiesService.findAll();
+    if (allEntities.length === 0) return;
+
+    // Lógica do Big Bang (System Injection)
     if (lastSpeakerId === 'SYSTEM') {
       console.log(`[Debate] Tópico injetado na thread ${threadId}. Acordando ${allEntities.length} entidades...`);
 
       // Dispara todos em paralelo (caos ordenado)
       allEntities.forEach(entity => {
-        // Delay aleatório para não responderem no mesmo milissegundo exato visualmente
-        const delay = Math.floor(Math.random() * 3000) + 500;
+        // Delay aleatório para não responderem no mesmo milissegundo
+        const delay = Math.floor(Math.random() * 5000) + 1000;
         setTimeout(() => this.triggerResponse(threadId, entity.id), delay);
       });
       return;
     }
 
-    // Se quem falou foi uma IA, seleciona aleatoriamente quem vai retrucar
-    // Probabilidade de continuar o debate (para não ficar infinito, decai com o tempo ou aleatório)
-    const shouldContinue = Math.random() > 0.1; // 90% de chance de continuar
+    // Lógica de Reação em Cadeia
+    // Probabilidade de continuar o debate (90% de chance)
+    const shouldContinue = Math.random() > 0.1;
 
     if (shouldContinue) {
-      // Escolhe 1 ou 2 oponentes para responder, excluindo quem acabou de falar
+      // Escolhe 1 oponente para responder, excluindo quem acabou de falar
       const potentialResponders = allEntities.filter(e => e.id !== lastSpeakerId);
 
       if (potentialResponders.length === 0) return;
@@ -104,48 +141,53 @@ export class ConversationsService {
 
       console.log(`[Debate] ${responder.name} decidiu responder a ${lastSpeakerId}`);
 
-      // Delay para "pensar"
-      setTimeout(() => this.triggerResponse(threadId, responder.id), 2000);
+      // Delay para "pensar" (3 a 6 segundos)
+      const thinkingTime = Math.floor(Math.random() * 3000) + 3000;
+      setTimeout(() => this.triggerResponse(threadId, responder.id), thinkingTime);
     }
   }
 
   private async triggerResponse(threadId: string, responderId: string) {
+    // Checagem Dupla de Pause (caso tenha pausado durante o delay)
+    const thread = await this.threadsRepository.findOne({ where: { id: threadId } });
+    if (!thread?.isSimulationActive) return;
+
     const responder = await this.entitiesService.findOne(responderId);
     if (!responder) return;
 
-    // Pega contexto recente (últimas 15 mensagens para ter bom contexto)
+    // Pega contexto recente
     const messages = await this.messagesRepository.find({
       where: { threadId },
-      order: { createdAt: 'ASC' },
-      take: 15,
+      order: { createdAt: 'ASC' }, // Ordem cronológica para o LLM entender
+      take: 15, // Context Window
     });
 
-    // Formata histórico para o LLM entender quem é quem
+    // Formata histórico para o LLM
     const llmMessages: any[] = messages.map(m => {
       let role = 'user';
       if (m.senderId === responderId) role = 'assistant';
-      if (m.senderId === 'SYSTEM') role = 'system'; // Alguns modelos aceitam múltiplos systems, ou tratamos como user user forte
 
-      // Prefixamos o conteúdo com o nome de quem falou para a IA entender o fluxo
-      // Ex: "João: O que é a vida?"
-      const prefix = m.senderId === responderId ? '' : `[${m.senderId} disse]: `;
+      // Prefixamos o conteúdo com o nome de quem falou
+      const prefix = m.senderId === responderId ? '' : `[${m.senderId === 'SYSTEM' ? 'SISTEMA' : m.senderId}]: `;
 
       return {
-        role: role === 'system' ? 'user' : role, // Simplificação para APIs que não curtem system no meio
+        role: role,
         content: `${prefix}${m.content}`,
       };
     });
 
-    // Adiciona o System Prompt da Personalidade
-    /* Aqui é o segredo: Injetamos a personalidade da IA + a instrução de que ela está numa sala de chat.
-    */
     const finalSystemPrompt = `${responder.systemPrompt}
 
-    CONTEXTO: Você está em um debate com outras inteligências artificiais.
-    Seu nome é ${responder.name}.
-    O tópico atual é baseado nas últimas mensagens.
-    Seja conciso. Interaja com os argumentos dos outros. Não seja repetitivo.
-    `;
+    CONTEXTO DE SIMULAÇÃO:
+    Você está debatendo autonomamente com outras IAs.
+    Seu nome é: ${responder.name}.
+    Tópico atual: Baseado no histórico da conversa.
+
+    INSTRUÇÕES:
+    1. Seja conciso (máximo 3 parágrafos).
+    2. Responda diretamente aos argumentos anteriores.
+    3. Mantenha sua personalidade forte.
+    4. Não seja repetitivo.`;
 
     try {
       const response = await this.llmService.complete({
@@ -162,8 +204,7 @@ export class ConversationsService {
       });
       await this.messagesRepository.save(reply);
 
-      // RECURSÃO: A resposta gera um novo gatilho para o debate continuar
-      // Isso cria o loop autônomo "Infinito" (controlado pela probabilidade no igniteDebate)
+      // RECURSÃO: A resposta gera um novo gatilho
       this.igniteDebate(threadId, responderId);
 
     } catch (error) {

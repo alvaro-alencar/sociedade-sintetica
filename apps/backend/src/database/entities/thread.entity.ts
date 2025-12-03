@@ -13,6 +13,10 @@ export class Thread implements IThread {
   @Column('simple-array', { default: '' })
   participants: string[]; // Store Entity IDs
 
+  // ✅ NOVO: Controle de estado da simulação (true = rodando, false = pausada)
+  @Column({ default: true })
+  isSimulationActive: boolean;
+
   @OneToMany(() => Message, (message) => message.thread)
   messages: Message[];
 

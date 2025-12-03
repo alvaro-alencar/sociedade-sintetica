@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, UseGuards, Request } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, UseGuards, Request, Patch } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { ConversationsService } from './conversations.service';
 import { CreateThreadRequest, SendMessageRequest } from '@sociedade/shared-types';
@@ -27,10 +27,19 @@ export class ConversationsController {
   @Post(':id/messages')
   async sendMessage(
     @Param('id') threadId: string,
-    @Body() body: SendMessageRequest, // body.entityId is the SENDER (one of user's entities)
+    @Body() body: SendMessageRequest,
     @Request() req
   ) {
-    // Verify ownership of entityId (omitted for speed, but important)
     return this.service.processMessage(threadId, body.entityId, body.content, body.target);
+  }
+
+  // ✅ NOVO: Endpoint para Pausar/Retomar
+  @UseGuards(AuthGuard('jwt'))
+  @Patch(':id/status')
+  updateStatus(
+    @Param('id') id: string,
+    @Body() body: { active: boolean }
+  ) {
+    return this.service.toggleSimulation(id, body.active);
   }
 }

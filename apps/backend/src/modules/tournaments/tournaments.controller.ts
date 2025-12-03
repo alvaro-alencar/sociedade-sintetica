@@ -29,9 +29,10 @@ export class TournamentsController {
     return this.service.createMatch(id, body.participants);
   }
 
+  // ✅ ATUALIZADO: Recebe rounds no body
   @UseGuards(AuthGuard('jwt'))
   @Post('matches/:matchId/run')
-  runMatch(@Param('matchId') matchId: string) {
-    return this.service.runMatch(matchId);
+  runMatch(@Param('matchId') matchId: string, @Body() body: { rounds: number }) {
+    return this.service.runMatch(matchId, body.rounds || 1);
   }
 }

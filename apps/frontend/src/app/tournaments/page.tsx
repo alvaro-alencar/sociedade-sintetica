@@ -2,10 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { apiFetch } from "@/lib/api";
+import { Trophy, Swords, Play, Target } from "lucide-react";
 
 export default function TournamentsPage() {
   const [tournaments, setTournaments] = useState<any[]>([]);
   const [myEntities, setMyEntities] = useState<any[]>([]);
+  const [isCreating, setIsCreating] = useState(false);
 
   useEffect(() => {
     loadTournaments();
@@ -25,16 +27,18 @@ export default function TournamentsPage() {
   };
 
   const createTournament = async () => {
+    setIsCreating(true);
     await apiFetch("/tournaments", {
       method: "POST",
-      body: JSON.stringify({ title: "Math Championship " + Date.now(), type: "math" }),
+      body: JSON.stringify({ title: "Torneio Lógico #" + Math.floor(Math.random() * 1000), type: "math" }),
     });
-    loadTournaments();
+    await loadTournaments();
+    setIsCreating(false);
   };
 
   const startMatch = async (tournamentId: string) => {
-    if (myEntities.length < 2) return alert("Need at least 2 entities to start a match");
-    
+    if (myEntities.length < 2) return alert("Você precisa de pelo menos 2 entidades para iniciar uma partida.");
+
     // Create Match
     const match = await apiFetch(`/tournaments/${tournamentId}/matches`, {
       method: "POST",
@@ -43,54 +47,89 @@ export default function TournamentsPage() {
 
     // Run Match
     await apiFetch(`/tournaments/matches/${match.id}/run`, { method: "POST" });
-    
+
     loadTournaments();
   };
 
   return (
-    <div>
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold">Tournaments</h1>
-        <button onClick={createTournament} className="px-4 py-2 bg-purple-600 rounded hover:bg-purple-700">
-          Create Tournament
+    <div className="max-w-7xl mx-auto px-4 pb-12 animate-in fade-in duration-500">
+      {/* Header */}
+      <div className="flex justify-between items-center mb-8 pt-4">
+        <div>
+          <h1 className="text-4xl font-bold bg-gradient-to-r from-accent via-primary to-secondary bg-clip-text text-transparent drop-shadow-sm">
+            Arena de Torneios
+          </h1>
+          <p className="text-gray-400 mt-2">Competições de lógica e criatividade</p>
+        </div>
+        <button
+          onClick={createTournament}
+          disabled={isCreating}
+          className="px-6 py-3 bg-gradient-to-r from-accent to-primary rounded-xl font-bold text-white hover:opacity-90 transition-all flex items-center gap-2 shadow-[0_0_15px_rgba(236,72,153,0.4)]"
+        >
+          {isCreating ? "Criando..." : <><Trophy className="w-5 h-5" /> Novo Torneio</>}
         </button>
       </div>
 
-      <div className="space-y-6">
+      {/* Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {tournaments.map((t) => (
-          <div key={t.id} className="p-6 bg-surface rounded-xl border border-gray-800">
-            <div className="flex justify-between items-start mb-4">
-              <div>
-                <h3 className="text-xl font-bold">{t.title}</h3>
-                <p className="text-sm text-gray-400">Type: {t.type} • Status: {t.status}</p>
+          <div key={t.id} className="glass-panel p-6 rounded-2xl border border-white/5 hover:border-accent/30 transition-all duration-300 relative overflow-hidden group">
+            {/* Header do Card */}
+            <div className="flex justify-between items-start mb-6 relative z-10">
+              <div className="flex gap-4">
+                <div className="p-3 bg-accent/10 rounded-xl text-accent border border-accent/20">
+                  <Target className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-white group-hover:text-accent transition-colors">{t.title}</h3>
+                  <div className="flex gap-3 mt-1 text-xs font-mono uppercase tracking-wider">
+                    <span className="text-gray-400">Tipo: <span className="text-white">{t.type}</span></span>
+                    <span className={`px-2 rounded-full border ${t.status === 'active' ? 'border-green-500/50 text-green-400' : 'border-gray-600 text-gray-400'}`}>
+                      {t.status}
+                    </span>
+                  </div>
+                </div>
               </div>
-              <button 
+
+              <button
                 onClick={() => startMatch(t.id)}
-                className="px-3 py-1 text-sm bg-blue-600/20 text-blue-400 border border-blue-600/50 rounded hover:bg-blue-600/30"
+                className="p-2 bg-white/5 hover:bg-white/10 rounded-lg text-sm text-gray-300 hover:text-white transition-colors border border-white/10 flex items-center gap-2"
+                title="Iniciar Partida Demo"
               >
-                Start Demo Match
+                <Play className="w-4 h-4" /> Demo
               </button>
             </div>
 
-            <div className="space-y-2">
-              <h4 className="text-sm font-semibold text-gray-500">Matches</h4>
-              {t.matches?.map((m: any) => (
-                <div key={m.id} className="p-3 bg-background/50 rounded border border-gray-800 text-sm">
-                  <div className="flex justify-between">
-                    <span>{m.id.slice(0, 8)}...</span>
-                    <span className={`px-2 rounded ${m.status === 'finished' ? 'bg-green-900/50 text-green-400' : 'bg-yellow-900/50 text-yellow-400'}`}>
-                      {m.status}
-                    </span>
-                  </div>
-                  {m.result && (
-                    <div className="mt-2 p-2 bg-black/30 rounded font-mono text-xs">
-                      <p>Problem: {m.result.problem}</p>
-                      <p>Winner: {m.result.winner || "None"}</p>
+            {/* Lista de Partidas */}
+            <div className="space-y-2 relative z-10">
+              <h4 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">Partidas Recentes</h4>
+              <div className="max-h-40 overflow-y-auto pr-2 space-y-2 custom-scrollbar">
+                {t.matches?.map((m: any) => (
+                  <div key={m.id} className="p-3 bg-black/40 rounded-lg border border-white/5 hover:border-white/10 transition-colors">
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="text-xs text-gray-500 font-mono">{m.id.slice(0, 8)}</span>
+                      <span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase ${m.status === 'finished' ? 'bg-green-900/30 text-green-400' : 'bg-yellow-900/30 text-yellow-400'}`}>
+                        {m.status}
+                      </span>
                     </div>
-                  )}
-                </div>
-              ))}
-              {(!t.matches || t.matches.length === 0) && <p className="text-sm text-gray-600">No matches yet.</p>}
+                    {m.result && (
+                      <div className="text-xs space-y-1">
+                        <div className="text-gray-400 line-clamp-1">Q: {m.result.challenge}</div>
+                        <div className="flex justify-between text-gray-300 font-medium">
+                          <span>Vencedor:</span>
+                          <span className="text-accent">{
+                            // Tenta achar o nome na lista de entities se possivel, senao mostra ID
+                            m.result.winner ? (myEntities.find(e => e.id === m.result.winner)?.name || "IA " + m.result.winner.slice(0,4)) : "Nenhum"
+                          }</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+                {(!t.matches || t.matches.length === 0) && (
+                  <p className="text-sm text-gray-600 italic p-2">Nenhuma partida registrada.</p>
+                )}
+              </div>
             </div>
           </div>
         ))}

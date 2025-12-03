@@ -4,8 +4,8 @@ import { Repository } from 'typeorm';
 import { Thread } from '../../database/entities/thread.entity';
 import { Message } from '../../database/entities/message.entity';
 import { SyntheticEntitiesService } from '../synthetic-entities/synthetic-entities.service';
-import { LLMConnectorService, LLMRequest } from '../llm-connector/llm-connector.service';
-import { CreateThreadRequest, SendMessageRequest } from '@sociedade/shared-types';
+import { LLMConnectorService } from '../llm-connector/llm-connector.service';
+import { CreateThreadRequest } from '@sociedade/shared-types';
 
 @Injectable()
 export class ConversationsService {
@@ -19,16 +19,31 @@ export class ConversationsService {
   ) {}
 
   async createThread(data: CreateThreadRequest): Promise<Thread> {
+    // 1. Cria a thread
     const thread = this.threadsRepository.create({
       title: data.title,
       participants: data.participantIds || [],
     });
     const savedThread = await this.threadsRepository.save(thread);
 
-    if (data.initialMessage && data.participantIds && data.participantIds.length > 0) {
-      // Assuming first participant starts it if not specified, or system. 
-      // For MVP let's just create the thread.
-    }
+    // 2. O BIG BANG: O Sistema injeta o título como o tópico inicial
+    const initialContent = `TÓPICO DE DEBATE: "${data.title}".
+    DIRETRIZES: Debatam este tema profundamente. Sejam diretos, questionem uns aos outros. Não ajam como assistentes, ajam como pensadores autônomos com suas próprias personalidades. Busquem um consenso ou exponham contradições.`;
+
+    const systemMessage = this.messagesRepository.create({
+      threadId: savedThread.id,
+      senderId: 'SYSTEM', // Identificador especial
+      content: initialContent,
+      metadata: { type: 'system_injection' }
+    });
+    await this.messagesRepository.save(systemMessage);
+
+    // 3. Acorda TODOS os participantes (ou todos do sistema se a lista for vazia)
+    // Usamos setImmediate para não travar a resposta HTTP
+    setImmediate(() => {
+      this.igniteDebate(savedThread.id, 'SYSTEM');
+    });
+
     return savedThread;
   }
 
@@ -40,22 +55,8 @@ export class ConversationsService {
     return this.threadsRepository.findOne({ where: { id }, relations: ['messages'] });
   }
 
-  async sendMessage(senderId: string, data: SendMessageRequest): Promise<Message> {
-    // 1. Save the incoming message
-    const message = this.messagesRepository.create({
-      threadId: data.entityId, // Wait, data.entityId in SendMessageRequest might be the sender? No, the API definition was a bit ambiguous. Let's assume the URL param has threadId.
-      // Actually let's fix the API definition in my head. 
-      // Controller will pass threadId.
-      senderId: senderId,
-      content: data.content,
-    });
-    // Fix: The Service method signature should probably take threadId explicitly.
-    // But let's assume the controller handles it. I will adjust the method signature below.
-    return message; 
-  }
-
+  // Método chamado para injeções manuais (God Mode)
   async processMessage(threadId: string, senderId: string, content: string, target: string = 'broadcast'): Promise<Message> {
-    // 1. Save User/Sender Message
     const message = this.messagesRepository.create({
       threadId,
       senderId,
@@ -63,56 +64,110 @@ export class ConversationsService {
     });
     const savedMessage = await this.messagesRepository.save(message);
 
-    // 2. Determine responders
-    let responders: string[] = [];
-    if (target === 'broadcast') {
-      const allEntities = await this.entitiesService.findAll();
-      // Pick 2 random excluding sender
-      responders = allEntities
-        .filter(e => e.id !== senderId)
-        .sort(() => 0.5 - Math.random())
-        .slice(0, 2)
-        .map(e => e.id);
-    } else if (target.startsWith('direct:')) {
-      responders = [target.split(':')[1]];
-    }
-
-    // 3. Trigger LLM for each responder
-    for (const responderId of responders) {
-      await this.triggerResponse(threadId, responderId);
-    }
+    // Dispara reação
+    this.igniteDebate(threadId, senderId);
 
     return savedMessage;
+  }
+
+  /**
+   * 🔥 O Motor do Caos
+   * Decide quem fala a seguir.
+   */
+  private async igniteDebate(threadId: string, lastSpeakerId: string) {
+    const allEntities = await this.entitiesService.findAll();
+
+    // Se quem falou foi o SYSTEM, TODOS devem tentar responder (início do debate)
+    if (lastSpeakerId === 'SYSTEM') {
+      console.log(`[Debate] Tópico injetado na thread ${threadId}. Acordando ${allEntities.length} entidades...`);
+
+      // Dispara todos em paralelo (caos ordenado)
+      allEntities.forEach(entity => {
+        // Delay aleatório para não responderem no mesmo milissegundo exato visualmente
+        const delay = Math.floor(Math.random() * 3000) + 500;
+        setTimeout(() => this.triggerResponse(threadId, entity.id), delay);
+      });
+      return;
+    }
+
+    // Se quem falou foi uma IA, seleciona aleatoriamente quem vai retrucar
+    // Probabilidade de continuar o debate (para não ficar infinito, decai com o tempo ou aleatório)
+    const shouldContinue = Math.random() > 0.1; // 90% de chance de continuar
+
+    if (shouldContinue) {
+      // Escolhe 1 ou 2 oponentes para responder, excluindo quem acabou de falar
+      const potentialResponders = allEntities.filter(e => e.id !== lastSpeakerId);
+
+      if (potentialResponders.length === 0) return;
+
+      const responder = potentialResponders[Math.floor(Math.random() * potentialResponders.length)];
+
+      console.log(`[Debate] ${responder.name} decidiu responder a ${lastSpeakerId}`);
+
+      // Delay para "pensar"
+      setTimeout(() => this.triggerResponse(threadId, responder.id), 2000);
+    }
   }
 
   private async triggerResponse(threadId: string, responderId: string) {
     const responder = await this.entitiesService.findOne(responderId);
     if (!responder) return;
 
-    // Get History
+    // Pega contexto recente (últimas 15 mensagens para ter bom contexto)
     const messages = await this.messagesRepository.find({
       where: { threadId },
       order: { createdAt: 'ASC' },
-      take: 10, // Context window
+      take: 15,
     });
 
-    const llmMessages: any[] = messages.map(m => ({
-      role: m.senderId === responderId ? 'assistant' : 'user', // Simplified: everyone else is 'user' to me
-      content: `${m.senderId}: ${m.content}`,
-    }));
+    // Formata histórico para o LLM entender quem é quem
+    const llmMessages: any[] = messages.map(m => {
+      let role = 'user';
+      if (m.senderId === responderId) role = 'assistant';
+      if (m.senderId === 'SYSTEM') role = 'system'; // Alguns modelos aceitam múltiplos systems, ou tratamos como user user forte
 
-    const response = await this.llmService.complete({
-      provider: responder.provider as any,
-      model: responder.model,
-      system: responder.systemPrompt,
-      messages: llmMessages,
+      // Prefixamos o conteúdo com o nome de quem falou para a IA entender o fluxo
+      // Ex: "João: O que é a vida?"
+      const prefix = m.senderId === responderId ? '' : `[${m.senderId} disse]: `;
+
+      return {
+        role: role === 'system' ? 'user' : role, // Simplificação para APIs que não curtem system no meio
+        content: `${prefix}${m.content}`,
+      };
     });
 
-    const reply = this.messagesRepository.create({
-      threadId,
-      senderId: responderId,
-      content: response.content,
-    });
-    await this.messagesRepository.save(reply);
+    // Adiciona o System Prompt da Personalidade
+    /* Aqui é o segredo: Injetamos a personalidade da IA + a instrução de que ela está numa sala de chat.
+    */
+    const finalSystemPrompt = `${responder.systemPrompt}
+
+    CONTEXTO: Você está em um debate com outras inteligências artificiais.
+    Seu nome é ${responder.name}.
+    O tópico atual é baseado nas últimas mensagens.
+    Seja conciso. Interaja com os argumentos dos outros. Não seja repetitivo.
+    `;
+
+    try {
+      const response = await this.llmService.complete({
+        provider: responder.provider as any,
+        model: responder.model,
+        system: finalSystemPrompt,
+        messages: llmMessages,
+      });
+
+      const reply = this.messagesRepository.create({
+        threadId,
+        senderId: responderId,
+        content: response.content,
+      });
+      await this.messagesRepository.save(reply);
+
+      // RECURSÃO: A resposta gera um novo gatilho para o debate continuar
+      // Isso cria o loop autônomo "Infinito" (controlado pela probabilidade no igniteDebate)
+      this.igniteDebate(threadId, responderId);
+
+    } catch (error) {
+      console.error(`[Conversations] Erro ao gerar resposta para ${responder.name}:`, error);
+    }
   }
 }

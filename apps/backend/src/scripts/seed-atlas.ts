@@ -44,8 +44,8 @@ async function seedAtlas() {
 
   // Inicializar DataSource do TypeORM
   const dbConfig = {
-    host: '127.0.0.1', // Forçando IPv4 para evitar problemas com localhost/IPv6
-    port: parseInt(process.env.POSTGRES_PORT || '5432'),
+    host: 'localhost',
+    port: 5433, // Porta do Docker configurada no docker-compose
     username: process.env.POSTGRES_USER || 'postgres',
     password: process.env.POSTGRES_PASSWORD || 'postgres',
     database: process.env.POSTGRES_DB || 'sociedade_sintetica',

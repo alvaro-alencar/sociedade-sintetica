@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { apiFetch } from "@/lib/api";
-import { Plus, Sparkles, Bot, Terminal } from "lucide-react";
+import { Plus, Sparkles, Bot, Terminal, Crown, Zap, Shield } from "lucide-react";
 
 export default function EntitiesPage() {
   const [entities, setEntities] = useState<any[]>([]);
@@ -11,8 +11,8 @@ export default function EntitiesPage() {
     name: "",
     description: "",
     provider: "openai",
-    model: "gpt-3.5-turbo",
-    systemPrompt: "You are a helpful AI.",
+    model: "google/gemini-2.0-flash-exp:free", // Default Grátis
+    systemPrompt: "Você é um dragão digital. Sua personalidade é...",
   });
 
   useEffect(() => {
@@ -36,17 +36,23 @@ export default function EntitiesPage() {
         body: JSON.stringify(formData),
       });
       setShowForm(false);
+      // Reset para o default grátis
       setFormData({
         name: "",
         description: "",
-        provider: "openai",
-        model: "gpt-3.5-turbo",
-        systemPrompt: "You are a helpful AI.",
+        provider: "google",
+        model: "google/gemini-2.0-flash-exp:free",
+        systemPrompt: "Você é um dragão digital...",
       });
       loadEntities();
     } catch (e) {
-      alert("Failed to create entity");
+      alert("Falha ao criar entidade");
     }
+  };
+
+  const handleModelChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const [provider, model] = e.target.value.split('|');
+    setFormData({ ...formData, provider, model });
   };
 
   return (
@@ -54,9 +60,9 @@ export default function EntitiesPage() {
       <div className="flex justify-between items-center mb-8 pt-4">
         <div>
           <h1 className="text-4xl font-bold bg-gradient-to-r from-primary via-secondary to-accent bg-clip-text text-transparent drop-shadow-sm">
-            Minhas Entidades Sintéticas
+            Laboratório de Criação
           </h1>
-          <p className="text-gray-400 mt-2">Gerencie as IAs que participarão da sociedade</p>
+          <p className="text-gray-400 mt-2">Treine suas IAs para a batalha.</p>
         </div>
 
         <button
@@ -67,30 +73,27 @@ export default function EntitiesPage() {
               : "bg-primary hover:bg-primary/80 text-white shadow-neon-blue hover:scale-105"
           }`}
         >
-          {showForm ? (
-            <>Fechar</>
-          ) : (
-            <>
-              <Plus className="w-5 h-5" /> Criar Nova Entidade
-            </>
-          )}
+          {showForm ? "Cancelar Criação" : <><Plus className="w-5 h-5" /> Novo Lutador</>}
         </button>
       </div>
 
       {showForm && (
-        <div className="mb-12 p-8 glass-panel rounded-2xl border border-primary/20 animate-in slide-in-from-top-4 duration-300">
+        <div className="mb-12 p-8 glass-panel rounded-2xl border border-primary/20 animate-in slide-in-from-top-4 duration-300 relative overflow-hidden">
+          {/* Background effect */}
+          <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-primary to-transparent opacity-50"></div>
+
           <div className="flex items-center gap-2 mb-6 text-primary">
             <Sparkles className="w-5 h-5" />
-            <h2 className="text-xl font-semibold">Configurar Nova Consciência</h2>
+            <h2 className="text-xl font-semibold">DNA da Nova Entidade</h2>
           </div>
 
-          <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="space-y-4">
+          <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div className="space-y-6">
               <div>
-                <label className="block text-sm text-gray-400 mb-1">Nome da Entidade</label>
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Identidade</label>
                 <input
                   className="w-full p-3 bg-black/40 border border-gray-700 rounded-lg focus:border-primary focus:outline-none transition-colors text-white placeholder-gray-600"
-                  placeholder="Ex: Sócrates AI"
+                  placeholder="Nome (Ex: Ignis, o Destruidor)"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   required
@@ -98,56 +101,63 @@ export default function EntitiesPage() {
               </div>
 
               <div>
-                <label className="block text-sm text-gray-400 mb-1">Descrição Curta</label>
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Descrição Pública</label>
                 <input
                   className="w-full p-3 bg-black/40 border border-gray-700 rounded-lg focus:border-primary focus:outline-none transition-colors text-white placeholder-gray-600"
-                  placeholder="Ex: O pai da filosofia ocidental"
+                  placeholder="Breve biografia para o card..."
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                   required
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm text-gray-400 mb-1">Provider</label>
-                  {/* CORREÇÃO: Adicionado aria-label para acessibilidade */}
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Núcleo de Processamento (Tier)</label>
+                <div className="relative">
                   <select
-                    aria-label="Selecionar Provedor de IA"
-                    className="w-full p-3 bg-black/40 border border-gray-700 rounded-lg focus:border-primary focus:outline-none text-white appearance-none"
-                    value={formData.provider}
-                    onChange={(e) => setFormData({ ...formData, provider: e.target.value })}
+                    aria-label="Selecionar Tier de IA"
+                    className="w-full p-3 bg-black/40 border border-gray-700 rounded-lg focus:border-primary focus:outline-none text-white appearance-none cursor-pointer"
+                    onChange={handleModelChange}
+                    defaultValue="google|google/gemini-2.0-flash-exp:free"
                   >
-                    <option value="openai">OpenAI</option>
-                    <option value="google">Google (Gemini)</option>
-                    <option value="deepseek">DeepSeek</option>
+                    <optgroup label="Tier 1: Iniciante (Grátis)">
+                      <option value="google|google/gemini-2.0-flash-exp:free">⚡ Gemini 2.0 Flash (Free)</option>
+                      <option value="openai|openai/gpt-3.5-turbo">🤖 GPT-3.5 Turbo (Low Cost)</option>
+                    </optgroup>
+                    <optgroup label="Tier 2: Competitivo (Pago)">
+                      <option value="deepseek|deepseek/deepseek-chat">🚀 DeepSeek V3 (Best Value)</option>
+                      <option value="x-ai|x-ai/grok-2-1212">🌶️ Grok 2 (Sem Filtros)</option>
+                    </optgroup>
+                    <optgroup label="Tier 3: Lendário (Elite)">
+                      <option value="openai|openai/gpt-4o">🧠 GPT-4o (Smarter)</option>
+                      <option value="deepseek|deepseek/deepseek-r1">💡 DeepSeek R1 (Reasoning)</option>
+                    </optgroup>
                   </select>
+                  <div className="absolute right-3 top-3 text-gray-500 pointer-events-none">
+                    <ChevronDownIcon />
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-sm text-gray-400 mb-1">Modelo</label>
-                  <input
-                    className="w-full p-3 bg-black/40 border border-gray-700 rounded-lg focus:border-primary focus:outline-none text-white placeholder-gray-600"
-                    placeholder="Ex: gpt-4"
-                    value={formData.model}
-                    onChange={(e) => setFormData({ ...formData, model: e.target.value })}
-                    required
-                  />
-                </div>
+                <p className="text-[10px] text-gray-500 mt-2">
+                  Modelos de tier mais alto têm maior capacidade de argumentação e lógica.
+                </p>
               </div>
             </div>
 
             <div className="flex flex-col h-full">
-              <label className="block text-sm text-gray-400 mb-1">System Prompt (Personalidade)</label>
+              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">
+                Programação Mental (System Prompt)
+              </label>
               <textarea
-                className="flex-1 w-full p-3 bg-black/40 border border-gray-700 rounded-lg focus:border-primary focus:outline-none transition-colors text-white placeholder-gray-600 font-mono text-sm resize-none"
-                placeholder="Defina como a IA deve se comportar, suas crenças e estilo de fala..."
+                className="flex-1 w-full p-4 bg-black/40 border border-gray-700 rounded-lg focus:border-primary focus:outline-none transition-colors text-white placeholder-gray-600 font-mono text-sm resize-none leading-relaxed"
+                placeholder="Defina a alma da sua IA. Ex: 'Você é um filósofo cínico que odeia tecnologia...' ou 'Você é um guerreiro honrado que fala em enigmas...'"
                 value={formData.systemPrompt}
                 onChange={(e) => setFormData({ ...formData, systemPrompt: e.target.value })}
                 required
               />
+              <p className="text-[10px] text-gray-500 mt-2 text-right">Quanto mais detalhado, mais personalidade terá seu lutador.</p>
             </div>
 
-            <div className="md:col-span-2 flex justify-end gap-3 mt-4">
+            <div className="md:col-span-2 flex justify-end gap-3 pt-4 border-t border-white/5">
               <button
                 type="button"
                 onClick={() => setShowForm(false)}
@@ -159,7 +169,7 @@ export default function EntitiesPage() {
                 type="submit"
                 className="px-8 py-3 bg-gradient-to-r from-primary to-secondary rounded-lg hover:opacity-90 transition-all font-bold text-black shadow-[0_0_15px_rgba(168,85,247,0.4)]"
               >
-                Dar Vida à Entidade
+                Criar Lutador
               </button>
             </div>
           </form>
@@ -189,33 +199,40 @@ export default function EntitiesPage() {
               </h3>
 
               <p className="text-gray-400 text-sm mb-6 line-clamp-2 h-10">
-                {entity.description || "Sem descrição definida."}
+                {entity.description || "Guerreiro sem história."}
               </p>
 
-              <div className="flex items-center gap-2 text-xs text-gray-500 bg-black/40 p-3 rounded-lg border border-white/5 font-mono">
-                <Terminal className="w-3 h-3" />
-                <span className="text-secondary">{entity.provider}</span>
-                <span className="text-gray-600">/</span>
-                <span className="text-accent">{entity.model}</span>
+              <div className="flex items-center justify-between pt-4 border-t border-white/5">
+                <div className="flex items-center gap-2 text-xs text-gray-500 font-mono">
+                  <Terminal className="w-3 h-3" />
+                  <span className="truncate max-w-[120px]" title={entity.model}>{entity.model.split('/')[1] || entity.model}</span>
+                </div>
+
+                {/* Ícone de Tier baseado no modelo */}
+                {entity.model.includes('gpt-4') || entity.model.includes('r1') ? (
+                   <div title="Tier Lendário">
+                     <Crown className="w-4 h-4 text-yellow-500" />
+                   </div>
+                ) : entity.model.includes('deepseek') || entity.model.includes('grok') ? (
+                   <div title="Tier Competitivo">
+                     <Shield className="w-4 h-4 text-blue-400" />
+                   </div>
+                ) : (
+                   <div title="Tier Iniciante">
+                     <Zap className="w-4 h-4 text-gray-600" />
+                   </div>
+                )}
               </div>
             </div>
           </div>
         ))}
-
-        {entities.length === 0 && !showForm && (
-          <div className="col-span-full flex flex-col items-center justify-center py-20 text-center border-2 border-dashed border-gray-800 rounded-2xl bg-white/5">
-            <Bot className="w-16 h-16 text-gray-700 mb-4" />
-            <h3 className="text-xl font-semibold text-gray-400">Nenhuma entidade encontrada</h3>
-            <p className="text-gray-600 mt-2">Crie sua primeira IA para começar os experimentos.</p>
-            <button
-              onClick={() => setShowForm(true)}
-              className="mt-6 text-primary hover:text-white hover:underline"
-            >
-              Criar agora
-            </button>
-          </div>
-        )}
       </div>
     </div>
   );
+}
+
+function ChevronDownIcon() {
+  return (
+    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
+  )
 }

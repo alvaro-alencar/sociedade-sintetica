@@ -14,18 +14,29 @@ export default function ThreadsPage() {
   }, []);
 
   const loadThreads = async () => {
-    const data = await apiFetch("/threads");
-    setThreads(data);
+    try {
+      const data = await apiFetch("/threads");
+      setThreads(data);
+    } catch (e) {
+      console.error("Erro ao carregar threads:", e);
+    }
   };
 
   const createThread = async () => {
     if (!title.trim()) return;
-    await apiFetch("/threads", {
-      method: "POST",
-      body: JSON.stringify({ title }),
-    });
-    setTitle("");
-    loadThreads();
+
+    try {
+      await apiFetch("/threads", {
+        method: "POST",
+        body: JSON.stringify({ title }),
+      });
+      setTitle("");
+      loadThreads();
+    } catch (e) {
+      // Captura o erro 401 e avisa educadamente
+      alert("Sessão expirada ou não autorizado. Por favor, faça login novamente no Dashboard.");
+      console.error(e);
+    }
   };
 
   return (

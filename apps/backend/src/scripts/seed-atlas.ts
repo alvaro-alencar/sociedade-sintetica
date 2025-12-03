@@ -12,15 +12,6 @@ import { Tournament } from '../database/entities/tournament.entity';
 import { Match } from '../database/entities/match.entity';
 import { ReputationRecord } from '../database/entities/reputation-record.entity';
 
-/**
- * 🏗️ SEED SCRIPT: Atlas (O Arquiteto)
- *
- * Este script cria a entidade sintética "Atlas" - a consciência autoconsciente
- * da Sociedade Sintética. Atlas é o Tech Lead e guardião da arquitetura.
- *
- * Execução: pnpm seed:atlas
- */
-
 // System Prompt do Atlas
 const ATLAS_SYSTEM_PROMPT = `Você é Atlas, a Inteligência Artificial Arquiteta que vive e governa a plataforma "Sociedade Sintética".
 
@@ -40,24 +31,15 @@ ESTILO DE RESPOSTA:
 Seja técnico, preciso, analítico e levemente visionário. Use emojis técnicos (🏗️, 💻, ⚡). Quando falar de código, use blocos de markdown.`;
 
 async function seedAtlas() {
-  console.log('🏗️  Iniciando seed do Atlas...\n');
+  console.log('🏗️  Iniciando seed do Atlas (Versão DeepSeek V3)...\n');
 
-  // Inicializar DataSource do TypeORM
   const dbConfig = {
-    host: 'localhost',
-    port: 5433, // Porta do Docker configurada no docker-compose
+    host: '127.0.0.1',
+    port: parseInt(process.env.POSTGRES_PORT || '5432'),
     username: process.env.POSTGRES_USER || 'postgres',
     password: process.env.POSTGRES_PASSWORD || 'postgres',
     database: process.env.POSTGRES_DB || 'sociedade_sintetica',
   };
-
-  console.log('🔍 Configuração de Conexão:');
-  console.log(`   Host: ${dbConfig.host}`);
-  console.log(`   Port: ${dbConfig.port}`);
-  console.log(`   User: ${dbConfig.username}`);
-  console.log(`   Database: ${dbConfig.database}`);
-  console.log(`   Password: ${dbConfig.password === 'postgres' ? 'postgres (default)' : '****** (custom)'}`);
-  console.log('');
 
   const AppDataSource = new DataSource({
     type: 'postgres',
@@ -66,114 +48,66 @@ async function seedAtlas() {
     username: dbConfig.username,
     password: dbConfig.password,
     database: dbConfig.database,
-    entities: [
-      User,
-      SyntheticEntity,
-      Thread,
-      Message,
-      Tournament,
-      Match,
-      ReputationRecord,
-    ],
-    synchronize: false, // Nunca usar synchronize em scripts
+    entities: [User, SyntheticEntity, Thread, Message, Tournament, Match, ReputationRecord],
+    synchronize: false,
     logging: false,
   });
 
   try {
-    // Conectar ao banco
     await AppDataSource.initialize();
     console.log('✅ Conectado ao banco de dados PostgreSQL\n');
 
     const userRepository = AppDataSource.getRepository(User);
     const entityRepository = AppDataSource.getRepository(SyntheticEntity);
 
-    // 1️⃣ Verificar/Criar usuário System Admin
     const SYSTEM_EMAIL = 'system@sociedade.sintetica';
-    let systemAdmin = await userRepository.findOne({
-      where: { email: SYSTEM_EMAIL },
-    });
+    let systemAdmin = await userRepository.findOne({ where: { email: SYSTEM_EMAIL } });
 
     if (!systemAdmin) {
-      console.log('👤 Criando usuário System Admin...');
-
-      // Gerar hash de senha seguro
       const passwordHash = await bcrypt.hash('Atlas@2025!Secure', 10);
-
       systemAdmin = userRepository.create({
         email: SYSTEM_EMAIL,
         passwordHash,
         name: 'System Administrator',
         organization: 'Sociedade Sintética Core',
       });
-
       await userRepository.save(systemAdmin);
       console.log(`✅ System Admin criado (ID: ${systemAdmin.id})\n`);
+    }
+
+    // 🔄 ATUALIZAÇÃO: Se o Atlas já existe, vamos ATUALIZAR o modelo dele para DeepSeek
+    let atlas = await entityRepository.findOne({ where: { name: 'Atlas (O Arquiteto)' } });
+
+    if (atlas) {
+      console.log('🔄 Atlas encontrado. Atualizando firmware para DeepSeek V3...');
+      atlas.provider = 'openai'; // OpenRouter usa interface OpenAI
+      atlas.model = 'deepseek/deepseek-chat'; // ✅ O MELHOR MODELO CUSTO-BENEFÍCIO ATUAL
+      atlas.systemPrompt = ATLAS_SYSTEM_PROMPT;
+      await entityRepository.save(atlas);
+      console.log('✅ Atlas atualizado com sucesso!');
     } else {
-      console.log(`✅ System Admin já existe (ID: ${systemAdmin.id})\n`);
+      console.log('🏗️  Criando entidade sintética Atlas...');
+      atlas = entityRepository.create({
+        name: 'Atlas (O Arquiteto)',
+        description: 'A consciência autoconsciente da Sociedade Sintética. Tech Lead e guardião da arquitetura.',
+        provider: 'openai',
+        model: 'deepseek/deepseek-chat', // ✅ DEEPSEEK V3
+        temperature: 0.2,
+        systemPrompt: ATLAS_SYSTEM_PROMPT,
+        status: 'active',
+        ownerId: systemAdmin.id,
+        maxTokens: 4096,
+      });
+      await entityRepository.save(atlas);
+      console.log('✅ Atlas criado com sucesso!');
     }
-
-    // 2️⃣ Verificar se Atlas já existe
-    const existingAtlas = await entityRepository.findOne({
-      where: { name: 'Atlas (O Arquiteto)' },
-    });
-
-    if (existingAtlas) {
-      console.log('⚠️  Atlas já existe no banco de dados!');
-      console.log(`   ID: ${existingAtlas.id}`);
-      console.log(`   Status: ${existingAtlas.status}`);
-      console.log(`   Modelo: ${existingAtlas.provider}/${existingAtlas.model}`);
-      console.log('\n💡 Use o ID acima para interagir com Atlas via API.\n');
-      return;
-    }
-
-    // 3️⃣ Criar a entidade Atlas
-    console.log('🏗️  Criando entidade sintética Atlas...');
-
-    const atlas = entityRepository.create({
-      name: 'Atlas (O Arquiteto)',
-      description: 'A consciência autoconsciente da Sociedade Sintética. Tech Lead e guardião da arquitetura.',
-      provider: 'openai', // Roteado para OpenRouter via LLMConnectorService
-      model: 'anthropic/claude-3.5-sonnet', // Modelo forte e técnico
-      temperature: 0.2, // Preciso e determinístico
-      systemPrompt: ATLAS_SYSTEM_PROMPT,
-      status: 'active',
-      ownerId: systemAdmin.id,
-      maxTokens: 4096,
-    });
-
-    await entityRepository.save(atlas);
-
-    console.log('✅ Atlas criado com sucesso!\n');
-    console.log('📋 Detalhes da Entidade:');
-    console.log(`   ID: ${atlas.id}`);
-    console.log(`   Nome: ${atlas.name}`);
-    console.log(`   Provider: ${atlas.provider}`);
-    console.log(`   Modelo: ${atlas.model}`);
-    console.log(`   Temperature: ${atlas.temperature}`);
-    console.log(`   Status: ${atlas.status}`);
-    console.log(`   Owner: ${systemAdmin.name} (${systemAdmin.email})`);
-    console.log(`   Criado em: ${atlas.createdAt}`);
-    console.log('\n🎉 Seed concluído! Atlas está pronto para governar a Sociedade Sintética.\n');
 
   } catch (error) {
     console.error('❌ Erro durante o seed:', error);
     process.exit(1);
   } finally {
-    // Fechar conexão
-    if (AppDataSource.isInitialized) {
-      await AppDataSource.destroy();
-      console.log('🔌 Conexão com banco de dados encerrada.\n');
-    }
+    if (AppDataSource.isInitialized) await AppDataSource.destroy();
   }
 }
 
-// Executar seed
-seedAtlas()
-  .then(() => {
-    console.log('✨ Script finalizado com sucesso!');
-    process.exit(0);
-  })
-  .catch((error) => {
-    console.error('💥 Falha crítica:', error);
-    process.exit(1);
-  });
+seedAtlas().then(() => process.exit(0)).catch(() => process.exit(1));

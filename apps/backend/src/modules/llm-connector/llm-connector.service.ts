@@ -21,66 +21,58 @@ export class LLMConnectorService {
   async complete(request: LLMRequest): Promise<LLMResponse> {
     console.log(`[LLMConnector] Requesting ${request.provider}/${request.model}`);
 
+    // 🔥 CORREÇÃO CRÍTICA: Prioridade total para OpenRouter
+    // Se a chave existe, usamos ela para TODOS os providers (Google, DeepSeek, etc.)
+    // pois o OpenRouter é o gateway universal.
+    if (process.env.OPENROUTER_API_KEY) {
+      return this.handleOpenAI(request);
+    }
+
+    // Fallback apenas se não tiver OpenRouter
     if (request.provider === 'openai') {
       return this.handleOpenAI(request);
     }
 
-    // Default mock for other providers
     return this.mockProvider(request);
   }
 
-  /**
-   * Handle OpenAI requests - uses real API if key is available, otherwise falls back to mock
-   * Supports both OpenAI direct and OpenRouter (aggregator)
-   */
   private async handleOpenAI(request: LLMRequest): Promise<LLMResponse> {
-    // Check for OpenRouter first (preferred - gives access to multiple models)
     const openRouterKey = process.env.OPENROUTER_API_KEY;
     const openAiKey = process.env.OPENAI_API_KEY;
 
     if (!openRouterKey && !openAiKey) {
-      console.warn('[LLMConnector] No API key set (OPENROUTER_API_KEY or OPENAI_API_KEY), using mock response');
+      console.warn('[LLMConnector] Sem API Key, usando mock');
       return this.mockOpenAI(request);
     }
 
     try {
       if (openRouterKey) {
-        console.log('[LLMConnector] Using OpenRouter API (access to multiple models)');
+        console.log('[LLMConnector] Using OpenRouter Gateway');
         const provider = new OpenRouterProvider(openRouterKey);
         return await provider.complete(request);
       } else {
-        console.log('[LLMConnector] Using real OpenAI API');
+        console.log('[LLMConnector] Using OpenAI Direct');
         const provider = new OpenAIProvider(openAiKey!);
         return await provider.complete(request);
       }
     } catch (error) {
-      console.error('[LLMConnector] API call failed, falling back to mock:', error);
+      console.error('[LLMConnector] API Error:', error);
+      // Se der erro real (ex: timeout), caímos no mock para não travar a UI
       return this.mockOpenAI(request);
     }
   }
 
-  /**
-   * Mock OpenAI response for development/testing
-   */
   private async mockOpenAI(request: LLMRequest): Promise<LLMResponse> {
-    // Simulating API delay
     await new Promise(resolve => setTimeout(resolve, 1000));
-
-    const lastUserMessage = request.messages.filter(m => m.role === 'user').pop()?.content || '';
-
     return {
-      content: `[MOCK] This is a simulated response from OpenAI (${request.model}). I heard you say: "${lastUserMessage}". I am ready to participate in the Synthetic Society.`,
+      content: `[MOCK] Erro na API ou sem créditos. (${request.model})`,
     };
   }
 
-  /**
-   * Mock response for non-OpenAI providers
-   */
   private async mockProvider(request: LLMRequest): Promise<LLMResponse> {
     await new Promise(resolve => setTimeout(resolve, 800));
-
     return {
-      content: `[MOCK - ${request.provider}] I received your message. Context: ${request.messages.length} messages. I am ready to engage in this synthetic society.`,
+      content: `[MOCK - ${request.provider}] Provider não configurado no Backend.`,
     };
   }
 }

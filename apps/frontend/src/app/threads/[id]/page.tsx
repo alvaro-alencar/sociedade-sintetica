@@ -3,23 +3,34 @@
 import { useEffect, useState, useRef } from "react";
 import { apiFetch } from "@/lib/api";
 import { useParams } from "next/navigation";
-import { Send, Bot, Zap, ArrowLeft, Terminal, Activity, Cpu, Disc, Pause, Play } from "lucide-react";
+import { Send, Activity, ArrowLeft, Terminal, Cpu, Play, Pause, ArrowDown, Zap } from "lucide-react";
 import Link from "next/link";
 
 export default function ThreadDetailPage() {
   const { id } = useParams();
   const [thread, setThread] = useState<any>(null);
   const [messages, setMessages] = useState<any[]>([]);
+  const [allEntities, setAllEntities] = useState<any[]>([]);
   const [myEntities, setMyEntities] = useState<any[]>([]);
   const [selectedEntity, setSelectedEntity] = useState("");
   const [newTopic, setNewTopic] = useState("");
+
+  // Refs e Estados de Scroll
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const [isAtBottom, setIsAtBottom] = useState(true); // Controla se o auto-scroll está ativo
+  const [showScrollButton, setShowScrollButton] = useState(false); // Mostra botão de "voltar pro fundo"
+
   const [isSimulating, setIsSimulating] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
 
+  // Carregamento inicial e Polling
   useEffect(() => {
     loadThread();
+    loadEntities();
+
     const interval = setInterval(() => {
+      // Só faz o polling se a simulação não estiver pausada na UI (opcional, mas economiza request)
       if (!isSimulating) {
         loadThread(true);
       }
@@ -31,20 +42,51 @@ export default function ThreadDetailPage() {
   useEffect(() => {
     const fetchEntities = async () => {
       try {
-        const data = await apiFetch("/entities/my");
-        setMyEntities(data);
-        if (data.length > 0) setSelectedEntity(data[0].id);
-      } catch (e) {}
+        const all = await apiFetch("/entities");
+        const my = await apiFetch("/entities/my");
+        setAllEntities(all || []);
+        setMyEntities(my || []);
+        if (my && my.length > 0) setSelectedEntity(my[0].id);
+      } catch (e) { console.error(e); }
     };
     fetchEntities();
   }, []);
 
+  // Lógica de Auto-Scroll Inteligente
   useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
+    // Só rola para baixo se o usuário JÁ estiver lá embaixo
+    if (isAtBottom) {
+      scrollToBottom();
+    }
+  }, [messages, isAtBottom]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  const handleScroll = () => {
+    if (!scrollContainerRef.current) return;
+
+    const { scrollTop, scrollHeight, clientHeight } = scrollContainerRef.current;
+
+    // Calcula a distância do fundo
+    const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
+
+    // Se a distância for menor que 100px, consideramos que o usuário está no fundo
+    const isBottom = distanceFromBottom < 100;
+
+    setIsAtBottom(isBottom);
+    setShowScrollButton(!isBottom); // Mostra botão se não estiver no fundo
+  };
+
+  const loadEntities = async () => {
+    try {
+      const all = await apiFetch("/entities");
+      const my = await apiFetch("/entities/my");
+      setAllEntities(all || []);
+      setMyEntities(my || []);
+      if (my && my.length > 0) setSelectedEntity(my[0].id);
+    } catch (e) { console.error(e); }
   };
 
   const loadThread = async (silent = false) => {
@@ -82,7 +124,9 @@ export default function ThreadDetailPage() {
     if (!newTopic.trim()) return;
 
     setIsSimulating(true);
-    const sender = selectedEntity || myEntities[0].id;
+    const sender = selectedEntity || (myEntities[0] ? myEntities[0].id : "");
+
+    if (!sender) return alert("Selecione uma entidade.");
 
     const tempMsg = {
       id: "temp-" + Date.now(),
@@ -94,6 +138,9 @@ export default function ThreadDetailPage() {
 
     setMessages([...messages, tempMsg]);
     setNewTopic("");
+
+    // Força scroll ao enviar mensagem
+    setIsAtBottom(true);
 
     try {
       await apiFetch(`/threads/${id}/messages`, {
@@ -114,13 +161,13 @@ export default function ThreadDetailPage() {
 
   const getEntityName = (id: string) => {
     if (id === 'SYSTEM') return 'SOCKET DO SISTEMA';
-    const entity = myEntities.find(e => e.id === id);
+    const entity = allEntities.find(e => e.id === id);
     return entity ? entity.name : `Nó Neural ${id.slice(0,4)}`;
   };
 
   const getEntityModel = (id: string) => {
     if (id === 'SYSTEM') return 'KERNEL';
-    const entity = myEntities.find(e => e.id === id);
+    const entity = allEntities.find(e => e.id === id);
     return entity ? entity.model : 'unknown';
   };
 
@@ -162,69 +209,89 @@ export default function ThreadDetailPage() {
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto space-y-8 mb-6 p-8 rounded-2xl bg-black/40 border border-white/5 custom-scrollbar relative shadow-inner">
-        <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:40px_40px] [mask-image:radial-gradient(ellipse_at_center,black,transparent_80%)] pointer-events-none"></div>
+      <div className="flex-1 relative">
+        <div
+          ref={scrollContainerRef}
+          onScroll={handleScroll}
+          className="absolute inset-0 overflow-y-auto space-y-8 p-8 rounded-2xl bg-black/40 border border-white/5 custom-scrollbar shadow-inner"
+        >
+          {/* Fundo decorativo fixo dentro do scroll */}
+          <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:40px_40px] [mask-image:radial-gradient(ellipse_at_center,black,transparent_80%)] pointer-events-none"></div>
 
-        {messages.length === 0 && (
-          <div className="flex flex-col items-center justify-center h-full text-gray-600 opacity-50">
-            <Cpu className="w-16 h-16 mb-4 stroke-1 animate-spin-slow" />
-            <p className="font-mono text-sm">INICIALIZANDO DEBATE...</p>
-          </div>
-        )}
-
-        {messages.map((msg, index) => {
-          const isSystem = msg.senderId === 'SYSTEM';
-          const isInjection = msg.type === 'injection' || isSystem;
-
-          return (
-            <div key={msg.id} className={`relative pl-8 group animate-in slide-in-from-bottom-4 duration-700 ${isSystem ? 'mb-12 mt-4' : ''}`}>
-              <div className="absolute left-[11px] top-8 bottom-[-32px] w-px bg-white/5 group-last:bottom-0"></div>
-
-              <div className={`absolute left-0 top-1 w-6 h-6 rounded-full border-2 flex items-center justify-center z-10 ${
-                isInjection
-                  ? 'bg-white border-white shadow-[0_0_15px_white]'
-                  : 'bg-gray-900 border-gray-700'
-              }`}>
-                {isInjection && <div className="w-2 h-2 bg-black rounded-full"></div>}
-              </div>
-
-              <div className="flex flex-col gap-2">
-                <div className="flex items-center gap-3">
-                  <span className={`text-xs font-bold tracking-wide uppercase flex items-center gap-2 ${
-                    isInjection ? 'text-white text-base' : 'text-primary'
-                  }`}>
-                    {isSystem && <Terminal className="w-4 h-4" />}
-                    {getEntityName(msg.senderId)}
-                  </span>
-                  {!isSystem && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/5 text-gray-500 font-mono border border-white/5">
-                        {getEntityModel(msg.senderId)}
-                    </span>
-                  )}
-                  <span className="text-[10px] text-gray-600 font-mono ml-auto">
-                    {new Date(msg.createdAt).toLocaleTimeString()}
-                  </span>
-                </div>
-
-                <div className={`p-5 rounded-lg text-sm leading-relaxed border backdrop-blur-sm shadow-xl ${
-                  isInjection
-                    ? 'bg-white/10 border-white/30 text-white font-medium'
-                    : 'bg-black/40 border-white/5 text-gray-300'
-                }`}>
-                  {msg.content}
-                </div>
-              </div>
+          {messages.length === 0 && (
+            <div className="flex flex-col items-center justify-center h-full text-gray-600 opacity-50">
+              <Cpu className="w-16 h-16 mb-4 stroke-1 animate-spin-slow" />
+              <p className="font-mono text-sm">INICIALIZANDO DEBATE...</p>
             </div>
-          );
-        })}
-        <div ref={messagesEndRef} />
+          )}
+
+          {messages.map((msg, index) => {
+            const isSystem = msg.senderId === 'SYSTEM';
+            const isInjection = msg.type === 'injection' || isSystem;
+
+            return (
+              <div key={msg.id} className={`relative pl-8 group animate-in slide-in-from-bottom-4 duration-700 ${isSystem ? 'mb-12 mt-4' : ''}`}>
+                <div className="absolute left-[11px] top-8 bottom-[-32px] w-px bg-white/5 group-last:bottom-0"></div>
+
+                <div className={`absolute left-0 top-1 w-6 h-6 rounded-full border-2 flex items-center justify-center z-10 ${
+                  isInjection
+                    ? 'bg-white border-white shadow-[0_0_15px_white]'
+                    : 'bg-gray-900 border-gray-700'
+                }`}>
+                  {isInjection && <div className="w-2 h-2 bg-black rounded-full"></div>}
+                </div>
+
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center gap-3">
+                    <span className={`text-xs font-bold tracking-wide uppercase flex items-center gap-2 ${
+                      isInjection ? 'text-white text-base' : 'text-primary'
+                    }`}>
+                      {isSystem && <Terminal className="w-4 h-4" />}
+                      {getEntityName(msg.senderId)}
+                    </span>
+                    {!isSystem && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/5 text-gray-500 font-mono border border-white/5">
+                          {getEntityModel(msg.senderId)}
+                      </span>
+                    )}
+                    <span className="text-[10px] text-gray-600 font-mono ml-auto">
+                      {new Date(msg.createdAt).toLocaleTimeString()}
+                    </span>
+                  </div>
+
+                  <div className={`p-5 rounded-lg text-sm leading-relaxed border backdrop-blur-sm shadow-xl ${
+                    isInjection
+                      ? 'bg-white/10 border-white/30 text-white font-medium'
+                      : 'bg-black/40 border-white/5 text-gray-300'
+                  }`}>
+                    <div className="whitespace-pre-wrap">{msg.content}</div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+          <div ref={messagesEndRef} />
+        </div>
+
+        {/* Botão flutuante para descer se o usuário subiu */}
+        {showScrollButton && (
+          <button
+            onClick={() => {
+              setIsAtBottom(true);
+              scrollToBottom();
+            }}
+            aria-label="Rolar para o final"
+            className="absolute bottom-4 right-8 p-3 bg-primary text-black rounded-full shadow-lg shadow-primary/30 hover:scale-110 transition-all animate-in fade-in zoom-in"
+          >
+            <ArrowDown className="w-5 h-5" />
+          </button>
+        )}
       </div>
 
-      <div className="glass-panel p-2 rounded-xl border border-primary/30 shadow-[0_0_30px_rgba(124,58,237,0.1)]">
+      <div className="glass-panel p-2 rounded-xl border border-primary/30 shadow-[0_0_30px_rgba(124,58,237,0.1)] mt-6">
         <div className="flex items-center bg-black/60 rounded-lg px-2">
           <div className="flex items-center border-r border-white/10 pr-3 mr-3 py-3">
             <span className="text-[10px] font-mono text-gray-500 mr-2">PROXY:</span>
-            {/* CORREÇÃO: Adicionado aria-label */}
             <select
               aria-label="Selecionar Nó Proxy"
               className="bg-transparent text-xs text-primary font-bold uppercase outline-none cursor-pointer hover:text-white transition-colors max-w-[120px]"

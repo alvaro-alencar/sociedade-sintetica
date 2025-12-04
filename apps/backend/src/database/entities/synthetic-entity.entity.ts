@@ -34,6 +34,14 @@ export class SyntheticEntity implements ISyntheticEntity {
   @Column()
   ownerId: string;
 
+  // 🐉 O PODER DO DRAGÃO: Vetor de Embedding (1536 dimensões para OpenAI text-embedding-3-small)
+  @Column({
+    type: 'vector' as any,
+    length: 1536,
+    nullable: true
+  })
+  embeddingVector: number[];
+
   @CreateDateColumn()
   createdAt: Date;
 

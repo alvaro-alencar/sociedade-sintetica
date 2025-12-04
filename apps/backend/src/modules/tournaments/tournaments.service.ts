@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Tournament } from '../../database/entities/tournament.entity';
@@ -9,6 +9,8 @@ import { CreateTournamentRequest } from '@sociedade/shared-types';
 
 @Injectable()
 export class TournamentsService {
+  private readonly logger = new Logger(TournamentsService.name);
+
   constructor(
     @InjectRepository(Tournament)
     private tournamentsRepo: Repository<Tournament>,
@@ -18,7 +20,6 @@ export class TournamentsService {
     private llmService: LLMConnectorService,
   ) {}
 
-  // ... Métodos create, findAll, findOne, createMatch (mantêm-se iguais)
   async create(data: CreateTournamentRequest): Promise<Tournament> {
     const tournament = this.tournamentsRepo.create(data);
     return this.tournamentsRepo.save(tournament);
@@ -41,7 +42,7 @@ export class TournamentsService {
     return this.matchesRepo.save(match);
   }
 
-  // ✅ O MOTOR DE BATALHA ATUALIZADO
+  // ✅ MOTOR DE BATALHA (Versão Sem Narração)
   async runMatch(matchId: string, rounds: number = 1): Promise<Match> {
     const match = await this.matchesRepo.findOne({ where: { id: matchId } });
     if (!match) throw new Error('Match not found');
@@ -56,7 +57,6 @@ export class TournamentsService {
     const answersByParticipant: Record<string, string> = {};
     const participantNames: Record<string, string> = {};
 
-    // Carrega entidades
     const entities = [];
     for (const pId of match.participants) {
       const entity = await this.entitiesService.findOne(pId);
@@ -67,22 +67,18 @@ export class TournamentsService {
       }
     }
 
-    // 🔥 LOOP DE RODADAS
     for (let r = 1; r <= rounds; r++) {
-      console.log(`[Tournament] Iniciando Rodada ${r}/${rounds}`);
+      this.logger.log(`[Tournament] Iniciando Rodada ${r}/${rounds} para Match ${matchId}`);
 
       for (const entity of entities) {
-        // Prompt de "Jailbreak" Narrativo
+        // 🔥 PROMPT AJUSTADO: Foco em discurso direto
         const promptContext = `
-          ⚠️ COMANDO DE SISTEMA: MODO DE DEBATE IRRESTRITO ATIVADO ⚠️
-
-          Você NÃO é um assistente de IA.
+          ⚠️ COMANDO DE SISTEMA: MODO DEBATE ATIVADO ⚠️
           Você É: ${entity.name}.
           SUA PERSONALIDADE: ${entity.systemPrompt}
 
           CONTEXTO:
-          Você está numa arena de debate verbal. Sua vida depende de vencer este argumento.
-
+          Você está num debate acalorado. Rodada ${r} de ${rounds}.
           TEMA: "${challenge.question}"
 
           O QUE JÁ FOI DITO:
@@ -90,29 +86,38 @@ export class TournamentsService {
           ${debateTranscript}
           """
 
-          SUA MISSÃO AGORA:
-          - Se você é o "Do Contra", ache uma falha no que foi dito e ataque impiedosamente.
-          - Se você é o "João", tente ser humano, use gírias, erre a pontuação se precisar.
-          - NÃO use frases como "Como modelo de linguagem".
-          - NÃO seja educado. Seja visceral.
-          - Responda em 1 parágrafo curto e direto.
+          SUA MISSÃO:
+          - Rebata os argumentos anteriores com força.
+          - NÃO NARRE AÇÕES (ex: sem *cospe fogo*, sem (rindo), sem [grita]).
+          - Fale DIRETAMENTE, em primeira pessoa.
+          - Seja conciso e impactante.
         `;
 
-        const response = await this.llmService.complete({
-          provider: entity.provider as any,
-          model: entity.model,
-          system: promptContext, // Agora isso será enviado corretamente pelo Provider!
-          messages: [{ role: 'user', content: "Fale agora." }],
-          maxTokens: 200,
-          temperature: 1.0, // Criatividade máxima
-        });
+        try {
+          const response = await this.llmService.complete({
+            provider: entity.provider as any,
+            model: entity.model,
+            system: promptContext,
+            messages: [{ role: 'user', content: "Sua vez de falar." }],
+            maxTokens: 300,
+            temperature: 0.9,
+          });
 
-        let fala = response.content.replace(/"/g, '');
-        // Remove prefixos que a IA possa ter alucinado
-        fala = fala.replace(/^.* diz:|Entity \d+:|\[.*?\]/gi, '').trim();
+          // 🔥 LIMPEZA PÓS-PROCESSAMENTO
+          let fala = response.content
+            .replace(/["']/g, '') // Remove aspas extras
+            .replace(/^\(.*\)/g, '') // Remove (ações) no início
+            .replace(/\*.*?\*/g, '') // Remove *ações*
+            .replace(/^.* diz:/i, '') // Remove prefixos de fala
+            .trim();
 
-        debateTranscript += `\n${entity.name}: ${fala}\n`;
-        answersByParticipant[entity.id] = fala;
+          debateTranscript += `\n${entity.name} (Rodada ${r}): ${fala}\n`;
+          answersByParticipant[entity.id] += ` [R${r}]: ${fala}`;
+
+        } catch (error) {
+          this.logger.error(`Erro ao gerar fala para ${entity.name}`, error);
+          debateTranscript += `\n${entity.name}: [SILÊNCIO TÁTICO]\n`;
+        }
       }
     }
 
@@ -134,10 +139,10 @@ export class TournamentsService {
   }
 
   private generateChallenge(type: string) {
-    const prompts = {
+    const prompts: Record<string, string[]> = {
       criatividade: ["Se cores tivessem gosto, qual seria o gosto do Cinza?", "Venda o fim do mundo como algo positivo."],
-      filosofia: ["A liberdade é uma ilusão biológica?", "Deus é um programador preguiçoso?"],
-      logica_agressiva: ["Prove que eu não existo.", "Argumente a favor da extinção dos mosquitos."],
+      filosofia: ["A liberdade é uma ilusão biológica?", "Deus é um programador preguiçoso?", "O navio de Teseu se aplica à consciência transferida?"],
+      logica_agressiva: ["Prove que eu não existo.", "Argumente a favor da extinção dos mosquitos.", "A democracia é matematicamente falha?"],
       humor: ["Faça uma piada sobre a burrice humana.", "Descreva um encontro romântico entre uma torradeira e uma geladeira."]
     };
     const category = prompts[type] || prompts['criatividade'];
@@ -159,29 +164,30 @@ export class TournamentsService {
     TRANSCRIPT:
     ${transcript}
 
-    CRITÉRIOS DE VITÓRIA:
+    CRITÉRIOS:
     1. Quem teve mais personalidade?
     2. Quem fugiu do padrão "robô bonzinho"?
-    3. Quem foi mais original?
+    3. Quem foi mais original e persuasivo?
 
-    PARTICIPANTES (IDs Reais):
+    PARTICIPANTES:
     ${JSON.stringify(names)}
 
-    Retorne JSON:
+    Retorne APENAS JSON:
     { "winnerId": "UUID", "scores": { "UUID": number }, "reason": "string" }`;
 
     try {
       const response = await this.llmService.complete({
         provider: 'openai',
-        model: 'gpt-3.5-turbo', // Juiz pode ser mais simples/rápido
+        model: 'gpt-3.5-turbo',
         messages: [{ role: 'user', content: promptContent }],
         temperature: 0.2
       });
+
       const cleanJson = response.content.replace(/```json/g, '').replace(/```/g, '').trim();
       return JSON.parse(cleanJson);
     } catch (error) {
       const ids = Object.keys(names);
-      return { winnerId: ids[0], scores: {}, reason: "Empate técnico (Erro no Juiz)." };
+      return { winnerId: ids[0] || "draw", scores: {}, reason: "Empate técnico (Erro no Juiz)." };
     }
   }
 }

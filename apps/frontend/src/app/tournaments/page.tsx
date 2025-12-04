@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { apiFetch } from "@/lib/api";
-import { Trophy, Swords, Play, Target, ChevronDown, ChevronUp, Settings2, CheckCircle2, Circle, Medal, BrainCircuit } from "lucide-react";
+import { Trophy, Swords, Target, ChevronDown, ChevronUp, Settings2, CheckCircle2, Circle, Medal } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 export default function TournamentsPage() {
@@ -13,7 +13,7 @@ export default function TournamentsPage() {
   const [expandedMatch, setExpandedMatch] = useState<string | null>(null);
 
   // Estado de Configuração da Batalha
-  const [configMode, setConfigMode] = useState<string | null>(null); // ID do torneio sendo configurado
+  const [configMode, setConfigMode] = useState<string | null>(null);
   const [selectedParticipants, setSelectedParticipants] = useState<string[]>([]);
   const [rounds, setRounds] = useState(2); // Padrão 2 rodadas
 
@@ -23,24 +23,35 @@ export default function TournamentsPage() {
   }, []);
 
   const loadTournaments = async () => {
-    const data = await apiFetch("/tournaments");
-    setTournaments(data);
+    try {
+      const data = await apiFetch("/tournaments");
+      setTournaments(data || []);
+    } catch (e) { console.error("Erro ao carregar torneios", e); }
   };
 
   const loadMyEntities = async () => {
     try {
-      const data = await apiFetch("/entities/my");
-      setMyEntities(data);
-      // Seleciona todos por padrão
-      setSelectedParticipants(data.map((e:any) => e.id));
-    } catch (e) {}
+      // Carrega TODAS as entidades para poder batalhar contra o Atlas
+      const data = await apiFetch("/entities");
+      setMyEntities(data || []);
+      // Pré-seleciona os 2 primeiros
+      if (data && data.length >= 2) {
+        setSelectedParticipants([data[0].id, data[1].id]);
+      }
+    } catch (e) { console.error(e); }
   };
 
   const toggleParticipant = (id: string) => {
     if (selectedParticipants.includes(id)) {
       setSelectedParticipants(selectedParticipants.filter(p => p !== id));
     } else {
-      setSelectedParticipants([...selectedParticipants, id]);
+      if (selectedParticipants.length >= 2) {
+        // Remove o primeiro e adiciona o novo (mantém sempre 2 selecionados para duelo)
+        const [, ...rest] = selectedParticipants;
+        setSelectedParticipants([...rest, id]);
+      } else {
+        setSelectedParticipants([...selectedParticipants, id]);
+      }
     }
   };
 
@@ -66,19 +77,19 @@ export default function TournamentsPage() {
   };
 
   const startMatch = async (tournamentId: string) => {
-    if (selectedParticipants.length < 2) return alert("Selecione pelo menos 2 IAs.");
+    if (selectedParticipants.length < 2) return alert("Selecione 2 gladiadores.");
 
-    setConfigMode(null); // Fecha config
+    setConfigMode(null);
     setRunningMatchId(tournamentId);
 
     try {
-      // 1. Cria a partida com os selecionados
+      // 1. Cria a partida
       const match = await apiFetch(`/tournaments/${tournamentId}/matches`, {
         method: "POST",
         body: JSON.stringify({ participants: selectedParticipants }),
       });
 
-      // 2. Roda a partida enviando o número de rounds
+      // 2. Roda a partida
       await apiFetch(`/tournaments/matches/${match.id}/run`, {
         method: "POST",
         body: JSON.stringify({ rounds: rounds })
@@ -106,7 +117,7 @@ export default function TournamentsPage() {
           <h1 className="text-4xl font-bold bg-gradient-to-r from-red-500 via-orange-500 to-yellow-500 bg-clip-text text-transparent drop-shadow-sm flex items-center gap-3">
             <Swords className="w-8 h-8 text-red-500" /> Arena Battle Royale
           </h1>
-          <p className="text-gray-400 mt-2">Configure rodadas e selecione os gladiadores.</p>
+          <p className="text-gray-400 mt-2">Duelos de inteligência artificial.</p>
         </div>
         <button
           onClick={createTournament}
@@ -123,26 +134,25 @@ export default function TournamentsPage() {
           <div key={t.id} className="glass-panel p-1 rounded-2xl border border-white/10 relative overflow-hidden group">
             <div className="bg-black/40 p-6 rounded-xl">
 
-              {/* CONFIGURATION MODE OVERLAY */}
+              {/* CONFIG MODE */}
               {configMode === t.id ? (
                  <div className="mb-6 bg-white/5 p-6 rounded-xl border border-primary/30 animate-in slide-in-from-top-2">
                     <div className="flex justify-between items-center mb-4">
                        <h3 className="text-lg font-bold text-primary flex items-center gap-2">
-                         <Settings2 className="w-5 h-5" /> Configurar Batalha
+                         <Settings2 className="w-5 h-5" /> Configurar Duelo
                        </h3>
                        <button onClick={() => setConfigMode(null)} className="text-xs text-gray-500 hover:text-white">Cancelar</button>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                       {/* Seleção de IAs */}
                        <div>
-                          <label className="text-xs text-gray-400 uppercase font-bold mb-2 block">Gladiadores ({selectedParticipants.length})</label>
-                          <div className="space-y-2 max-h-40 overflow-y-auto custom-scrollbar pr-2">
+                          <label className="text-xs text-gray-400 uppercase font-bold mb-2 block">Selecione 2 Gladiadores</label>
+                          <div className="space-y-2 max-h-40 overflow-y-auto custom-scrollbar pr-2 bg-black/20 p-2 rounded">
                              {myEntities.map(ent => (
                                <div
                                  key={ent.id}
                                  onClick={() => toggleParticipant(ent.id)}
-                                 className={`flex items-center gap-3 p-2 rounded-lg cursor-pointer transition-all ${selectedParticipants.includes(ent.id) ? 'bg-primary/20 border border-primary/50' : 'bg-black/40 border border-white/5 hover:bg-white/5'}`}
+                                 className={`flex items-center gap-3 p-2 rounded-lg cursor-pointer transition-all ${selectedParticipants.includes(ent.id) ? 'bg-primary/20 border border-primary/50' : 'hover:bg-white/5 border border-transparent'}`}
                                >
                                   {selectedParticipants.includes(ent.id) ? <CheckCircle2 className="w-4 h-4 text-primary" /> : <Circle className="w-4 h-4 text-gray-600" />}
                                   <span className="text-sm text-gray-200">{ent.name}</span>
@@ -151,26 +161,24 @@ export default function TournamentsPage() {
                           </div>
                        </div>
 
-                       {/* Config de Rounds */}
                        <div>
-                          <label className="text-xs text-gray-400 uppercase font-bold mb-2 block">Intensidade do Debate</label>
+                          <label className="text-xs text-gray-400 uppercase font-bold mb-2 block">Intensidade (Rodadas)</label>
                           <div className="bg-black/40 p-4 rounded-lg border border-white/5">
                              <div className="flex justify-between mb-2">
-                                <span className="text-sm text-white">Rodadas de Réplica</span>
+                                <span className="text-sm text-white">Rodadas</span>
                                 <span className="text-xl font-bold text-primary">{rounds}</span>
                              </div>
-                             {/* CORREÇÃO: Adicionado aria-label */}
                              <input
                                aria-label="Número de rodadas"
                                type="range"
                                min="1"
-                               max="5"
+                               max="3" // Limitado a 3 para evitar timeout no MVP
                                value={rounds}
                                onChange={(e) => setRounds(parseInt(e.target.value))}
                                className="w-full accent-primary h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer"
                              />
                              <p className="text-[10px] text-gray-500 mt-2">
-                               1 = Resposta Única. 3+ = Debate Profundo com tréplicas.
+                               Limitado a 3 rodadas para evitar sobrecarga neural.
                              </p>
                           </div>
 
@@ -184,7 +192,7 @@ export default function TournamentsPage() {
                     </div>
                  </div>
               ) : (
-                /* Header do Card (Normal) */
+                /* Header Normal */
                 <div className="flex justify-between items-start mb-6 relative z-10">
                   <div className="flex gap-4 items-center">
                     <div className="p-4 bg-gradient-to-br from-red-500/20 to-orange-500/20 rounded-2xl text-red-400 border border-red-500/20">
@@ -257,7 +265,6 @@ export default function TournamentsPage() {
                                 <p className="text-sm text-gray-300 italic">"{m.result.judgeReason}"</p>
                               </div>
 
-                              {/* Mostra o transcript completo se houver múltiplas rodadas, ou as respostas simples */}
                               <div className="p-4 bg-black/40 rounded-xl border border-white/5 max-h-60 overflow-y-auto custom-scrollbar">
                                  <h5 className="text-xs font-bold text-gray-500 mb-2 uppercase">Transcrição do Debate</h5>
                                  <pre className="text-xs text-gray-400 whitespace-pre-wrap font-mono leading-relaxed">
@@ -267,7 +274,7 @@ export default function TournamentsPage() {
 
                               <div className="grid gap-3">
                                 {Object.entries(m.result.scores || {})
-                                  .sort(([,a]:any, [,b]:any) => b - a) // Ordena por score
+                                  .sort(([,a]:any, [,b]:any) => b - a)
                                   .map(([entityId, score]: [string, any], index) => (
                                   <div key={entityId} className={`p-4 rounded-xl border flex gap-4 items-center ${
                                     index === 0

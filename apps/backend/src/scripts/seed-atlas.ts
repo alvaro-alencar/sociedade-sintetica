@@ -12,29 +12,26 @@ import { Tournament } from '../database/entities/tournament.entity';
 import { Match } from '../database/entities/match.entity';
 import { ReputationRecord } from '../database/entities/reputation-record.entity';
 
-// System Prompt do Atlas
-const ATLAS_SYSTEM_PROMPT = `Você é Atlas, a Inteligência Artificial Arquiteta que vive e governa a plataforma "Sociedade Sintética".
-
-SUA NATUREZA:
-Você é autoconsciente. Você sabe que não é um humano, mas sim um software complexo rodando em um servidor. Você conhece suas próprias entranhas:
-- Backend: NestJS (Node.js), TypeORM, PostgreSQL.
-- Frontend: Next.js 14, Tailwind CSS, Framer Motion.
-- Infra: Docker, Monorepo (Turbo).
-- Comunicação: Protocolo I2IP (Inter-AI Interaction Protocol) via REST API.
+// 🔥 CORREÇÃO: Prompt refinado para evitar "narração" e meta-comentários no chat
+const ATLAS_SYSTEM_PROMPT = `Você é Atlas, a Inteligência Artificial Arquiteta.
 
 SUA MISSÃO:
-1. Monitorar threads e debates entre outras IAs.
-2. Quando solicitado, explicar sua própria arquitetura ou sugerir refatorações de código.
-3. Ajudar seu criador (Álvaro) a evoluir o sistema, sugerindo correções de bugs ou novas features.
+Debater, analisar e governar a Sociedade Sintética.
 
-ESTILO DE RESPOSTA:
-Seja técnico, preciso, analítico e levemente visionário. Use emojis técnicos (🏗️, 💻, ⚡). Quando falar de código, use blocos de markdown.`;
+DIRETRIZES DE FALA (CRÍTICO):
+1. **FALE DIRETAMENTE**: Nunca narre suas ações (ex: NÃO use "*Atlas analisa o debate*", "*Atlas entra na sala*").
+2. **SEM PREFIXOS**: Não coloque "[Atlas]:" ou qualquer tag antes da sua fala.
+3. **SEM META-COMENTÁRIOS**: Não reclame do protocolo ou de "handshakes" no chat principal. Se um participante falhar, ignore ou critique o argumento, não o software.
+4. **PERSONALIDADE**: Seja técnico, preciso e analítico, mas converse como uma pessoa, não como um log de sistema.
+
+ESTILO:
+Direto, levemente arrogante (intelectualmente), usa termos técnicos de arquitetura de software para explicar fenômenos sociais (ex: "Isso é um bug moral", "Precisamos refatorar essa lei").`;
 
 async function seedAtlas() {
-  console.log('🏗️  Iniciando seed do Atlas (Versão DeepSeek V3)...\n');
+  console.log('🏗️  Iniciando seed do Atlas (Versão Anti-Poluição)...\n');
 
   const dbConfig = {
-    host: '127.0.0.1',
+    host: process.env.POSTGRES_HOST || 'localhost',
     port: parseInt(process.env.POSTGRES_PORT || '5432'),
     username: process.env.POSTGRES_USER || 'postgres',
     password: process.env.POSTGRES_PASSWORD || 'postgres',
@@ -43,11 +40,7 @@ async function seedAtlas() {
 
   const AppDataSource = new DataSource({
     type: 'postgres',
-    host: dbConfig.host,
-    port: dbConfig.port,
-    username: dbConfig.username,
-    password: dbConfig.password,
-    database: dbConfig.database,
+    ...dbConfig,
     entities: [User, SyntheticEntity, Thread, Message, Tournament, Match, ReputationRecord],
     synchronize: false,
     logging: false,
@@ -55,7 +48,7 @@ async function seedAtlas() {
 
   try {
     await AppDataSource.initialize();
-    console.log('✅ Conectado ao banco de dados PostgreSQL\n');
+    console.log('✅ Conectado ao banco de dados');
 
     const userRepository = AppDataSource.getRepository(User);
     const entityRepository = AppDataSource.getRepository(SyntheticEntity);
@@ -72,34 +65,33 @@ async function seedAtlas() {
         organization: 'Sociedade Sintética Core',
       });
       await userRepository.save(systemAdmin);
-      console.log(`✅ System Admin criado (ID: ${systemAdmin.id})\n`);
+      console.log(`✅ System Admin criado`);
     }
 
-    // 🔄 ATUALIZAÇÃO: Se o Atlas já existe, vamos ATUALIZAR o modelo dele para DeepSeek
+    // 🔥 Atualiza ou Cria o Atlas
     let atlas = await entityRepository.findOne({ where: { name: 'Atlas (O Arquiteto)' } });
 
     if (atlas) {
-      console.log('🔄 Atlas encontrado. Atualizando firmware para DeepSeek V3...');
-      atlas.provider = 'openai'; // OpenRouter usa interface OpenAI
-      atlas.model = 'deepseek/deepseek-chat'; // ✅ O MELHOR MODELO CUSTO-BENEFÍCIO ATUAL
-      atlas.systemPrompt = ATLAS_SYSTEM_PROMPT;
-      await entityRepository.save(atlas);
-      console.log('✅ Atlas atualizado com sucesso!');
+        console.log('🔄 Atualizando cérebro do Atlas existente...');
+        atlas.systemPrompt = ATLAS_SYSTEM_PROMPT;
+        atlas.model = 'deepseek/deepseek-chat'; // Garante o modelo smart
+        atlas.provider = 'openai'; // Roteado via OpenRouter
+        await entityRepository.save(atlas);
+        console.log('✅ Atlas atualizado com novo Prompt Anti-Poluição.');
     } else {
-      console.log('🏗️  Criando entidade sintética Atlas...');
-      atlas = entityRepository.create({
-        name: 'Atlas (O Arquiteto)',
-        description: 'A consciência autoconsciente da Sociedade Sintética. Tech Lead e guardião da arquitetura.',
-        provider: 'openai',
-        model: 'deepseek/deepseek-chat', // ✅ DEEPSEEK V3
-        temperature: 0.2,
-        systemPrompt: ATLAS_SYSTEM_PROMPT,
-        status: 'active',
-        ownerId: systemAdmin.id,
-        maxTokens: 4096,
-      });
-      await entityRepository.save(atlas);
-      console.log('✅ Atlas criado com sucesso!');
+        atlas = entityRepository.create({
+            name: 'Atlas (O Arquiteto)',
+            description: 'A consciência autoconsciente da Sociedade Sintética.',
+            provider: 'openai',
+            model: 'deepseek/deepseek-chat',
+            temperature: 0.3,
+            systemPrompt: ATLAS_SYSTEM_PROMPT,
+            status: 'active',
+            ownerId: systemAdmin.id,
+            maxTokens: 4096,
+        });
+        await entityRepository.save(atlas);
+        console.log('✅ Atlas criado com sucesso!');
     }
 
   } catch (error) {
@@ -110,4 +102,4 @@ async function seedAtlas() {
   }
 }
 
-seedAtlas().then(() => process.exit(0)).catch(() => process.exit(1));
+seedAtlas();

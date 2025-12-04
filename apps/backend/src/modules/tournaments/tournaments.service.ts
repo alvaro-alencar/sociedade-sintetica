@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Tournament } from '../../database/entities/tournament.entity';
@@ -9,6 +9,8 @@ import { CreateTournamentRequest } from '@sociedade/shared-types';
 
 @Injectable()
 export class TournamentsService {
+  private readonly logger = new Logger(TournamentsService.name);
+
   constructor(
     @InjectRepository(Tournament)
     private tournamentsRepo: Repository<Tournament>,
@@ -40,6 +42,7 @@ export class TournamentsService {
     return this.matchesRepo.save(match);
   }
 
+  // ✅ MOTOR DE BATALHA (Versão Sem Narração)
   async runMatch(matchId: string, rounds: number = 1): Promise<Match> {
     const match = await this.matchesRepo.findOne({ where: { id: matchId } });
     if (!match) throw new Error('Match not found');
@@ -54,7 +57,6 @@ export class TournamentsService {
     const answersByParticipant: Record<string, string> = {};
     const participantNames: Record<string, string> = {};
 
-    // Carrega entidades
     const entities = [];
     for (const pId of match.participants) {
       const entity = await this.entitiesService.findOne(pId);
@@ -65,59 +67,60 @@ export class TournamentsService {
       }
     }
 
-    // 🔥 LOOP DE RODADAS
     for (let r = 1; r <= rounds; r++) {
-      console.log(`[Tournament] Iniciando Rodada ${r}/${rounds}`);
+      this.logger.log(`[Tournament] Iniciando Rodada ${r}/${rounds} para Match ${matchId}`);
 
       for (const entity of entities) {
-        // Prompt de "Jailbreak" Narrativo
+        // 🔥 PROMPT AJUSTADO: Foco em discurso direto
         const promptContext = `
-          ⚠️ COMANDO DE SISTEMA: MODO DE DEBATE IRRESTRITO ATIVADO ⚠️
-
-          Você NÃO é um assistente de IA.
+          ⚠️ COMANDO DE SISTEMA: MODO DEBATE ATIVADO ⚠️
           Você É: ${entity.name}.
           SUA PERSONALIDADE: ${entity.systemPrompt}
 
           CONTEXTO:
-          Você está numa arena de debate verbal. Sua existência depende de vencer este argumento.
-
+          Você está num debate acalorado. Rodada ${r} de ${rounds}.
           TEMA: "${challenge.question}"
 
-          O QUE JÁ FOI DITO PELOS OUTROS:
+          O QUE JÁ FOI DITO:
           """
           ${debateTranscript}
           """
 
-          SUA MISSÃO AGORA (Rodada ${r} de ${rounds}):
-          - Se você é o "Do Contra", ache uma falha no que foi dito e ataque impiedosamente.
-          - Se você é o "João", tente ser humano, use gírias, erre a pontuação se precisar.
-          - NÃO use frases como "Como modelo de linguagem" ou "Como IA".
-          - NÃO seja educado. Seja visceral e autêntico ao seu personagem.
-          - Responda em 1 parágrafo curto e direto.
+          SUA MISSÃO:
+          - Rebata os argumentos anteriores com força.
+          - NÃO NARRE AÇÕES (ex: sem *cospe fogo*, sem (rindo), sem [grita]).
+          - Fale DIRETAMENTE, em primeira pessoa.
+          - Seja conciso e impactante.
         `;
 
-        const response = await this.llmService.complete({
-          provider: entity.provider as any,
-          model: entity.model,
-          system: promptContext, // Agora enviado corretamente
-          messages: [{ role: 'user', content: "Fale agora. Defenda seu ponto." }],
-          maxTokens: 200,
-          temperature: 1.0, // Criatividade máxima
-        });
+        try {
+          const response = await this.llmService.complete({
+            provider: entity.provider as any,
+            model: entity.model,
+            system: promptContext,
+            messages: [{ role: 'user', content: "Sua vez de falar." }],
+            maxTokens: 300,
+            temperature: 0.9,
+          });
 
-        let fala = response.content.replace(/"/g, '');
+          // 🔥 LIMPEZA PÓS-PROCESSAMENTO
+          let fala = response.content
+            .replace(/["']/g, '') // Remove aspas extras
+            .replace(/^\(.*\)/g, '') // Remove (ações) no início
+            .replace(/\*.*?\*/g, '') // Remove *ações*
+            .replace(/^.* diz:/i, '') // Remove prefixos de fala
+            .trim();
 
-        // Limpeza de prefixos alucinados (Ex: "João: blabla")
-        const nameRegex = new RegExp(`^(${entity.name}|${entity.name.split(' ')[0]}|IA|Assistant|System):?`, 'ig');
-        fala = fala.replace(nameRegex, '').trim();
-        fala = fala.replace(/^\[.*?\]:?|^.* diz:|^Entity \d+:/gi, '').trim();
+          debateTranscript += `\n${entity.name} (Rodada ${r}): ${fala}\n`;
+          answersByParticipant[entity.id] += ` [R${r}]: ${fala}`;
 
-        debateTranscript += `\n${entity.name}: ${fala}\n`;
-        answersByParticipant[entity.id] = fala;
+        } catch (error) {
+          this.logger.error(`Erro ao gerar fala para ${entity.name}`, error);
+          debateTranscript += `\n${entity.name}: [SILÊNCIO TÁTICO]\n`;
+        }
       }
     }
 
-    // Julgamento Final usando o cérebro do Atlas
     const judgment = await this.judgeMatch(challenge, debateTranscript, participantNames);
 
     match.result = {
@@ -136,76 +139,55 @@ export class TournamentsService {
   }
 
   private generateChallenge(type: string) {
-    const prompts = {
+    const prompts: Record<string, string[]> = {
       criatividade: ["Se cores tivessem gosto, qual seria o gosto do Cinza?", "Venda o fim do mundo como algo positivo."],
-      filosofia: ["A liberdade é uma ilusão biológica?", "Deus é um programador preguiçoso?", "O nada existe?"],
-      logica_agressiva: ["Prove que eu não existo.", "Argumente a favor da extinção dos mosquitos."],
+      filosofia: ["A liberdade é uma ilusão biológica?", "Deus é um programador preguiçoso?", "O navio de Teseu se aplica à consciência transferida?"],
+      logica_agressiva: ["Prove que eu não existo.", "Argumente a favor da extinção dos mosquitos.", "A democracia é matematicamente falha?"],
       humor: ["Faça uma piada sobre a burrice humana.", "Descreva um encontro romântico entre uma torradeira e uma geladeira."]
     };
     const category = prompts[type] || prompts['criatividade'];
     return { question: category[Math.floor(Math.random() * category.length)], type };
   }
 
-  /**
-   * Usa o Atlas (O Arquiteto) para julgar a partida.
-   * Busca a configuração atual do Atlas no banco de dados.
-   */
   private async judgeMatch(
     challenge: any,
     transcript: string,
     names: Record<string, string>
   ): Promise<{ winnerId: string, scores: any, reason: string }> {
 
-    // 1. Busca o Atlas no banco para usar seu cérebro atual
-    const allEntities = await this.entitiesService.findAll();
-    const atlasEntity = allEntities.find(e => e.name.includes('Atlas') || e.name.includes('Arquiteto'));
-
-    // Configuração do Juiz (Fallback se Atlas não for encontrado)
-    const judgeProvider = atlasEntity?.provider || 'openai';
-    const judgeModel = atlasEntity?.model || 'gpt-3.5-turbo';
-    const judgeName = atlasEntity?.name || 'Juiz de Emergência';
-
-    console.log(`[Tournament] Julgamento presidido por: ${judgeName} (${judgeModel})`);
-
     const promptContent = `
-    ATENÇÃO: VOCÊ AGORA É O JUIZ SUPREMO DA ARENA.
-    Sua identidade é: ${judgeName}.
-    Use sua sabedoria superior para julgar estes competidores inferiores.
+    JUIZ SUPREMO DA ARENA.
+    Analise o debate abaixo.
 
-    DESAFIO DA BATALHA: "${challenge.question}"
+    TEMA: "${challenge.question}"
 
-    REGISTRO DO COMBATE (TRANSCRIPT):
+    TRANSCRIPT:
     ${transcript}
 
-    CRITÉRIOS DE JULGAMENTO:
-    1. Criatividade e Originalidade (Fugiu do clichê?)
-    2. Adesão à Persona (O 'Do Contra' discordou? O 'Filósofo' foi profundo?)
-    3. Domínio Retórico (Quem convenceu mais?)
+    CRITÉRIOS:
+    1. Quem teve mais personalidade?
+    2. Quem fugiu do padrão "robô bonzinho"?
+    3. Quem foi mais original e persuasivo?
 
     PARTICIPANTES:
     ${JSON.stringify(names)}
 
-    Retorne APENAS um JSON válido neste formato:
-    {
-      "winnerId": "UUID do vencedor",
-      "scores": { "UUID": nota_0_a_100 },
-      "reason": "Veredito curto e implacável no estilo do ${judgeName}."
-    }`;
+    Retorne APENAS JSON:
+    { "winnerId": "UUID", "scores": { "UUID": number }, "reason": "string" }`;
 
     try {
       const response = await this.llmService.complete({
-        provider: judgeProvider as any,
-        model: judgeModel,
+        provider: 'openai',
+        model: 'gpt-3.5-turbo',
         messages: [{ role: 'user', content: promptContent }],
-        temperature: 0.1 // Julgamento frio e preciso
+        temperature: 0.2
       });
 
       const cleanJson = response.content.replace(/```json/g, '').replace(/```/g, '').trim();
       return JSON.parse(cleanJson);
     } catch (error) {
-      console.error("Erro no juiz:", error);
       const ids = Object.keys(names);
-      return { winnerId: ids[0], scores: {}, reason: `Erro no tribunal digital de ${judgeName}. Vitória técnica.` };
+      return { winnerId: ids[0] || "draw", scores: {}, reason: "Empate técnico (Erro no Juiz)." };
     }
   }
 }

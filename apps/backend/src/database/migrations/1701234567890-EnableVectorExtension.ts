@@ -1,19 +1,13 @@
 import { MigrationInterface, QueryRunner } from "typeorm";
 
 export class EnableVectorExtension1701234567890 implements MigrationInterface {
-    name = 'EnableVectorExtension1701234567890'
-
     public async up(queryRunner: QueryRunner): Promise<void> {
-        // ⚡ O COMANDO MÁGICO
-        // Ativa a extensão pgvector no PostgreSQL
+        // Ativa a extensão vector se ela ainda não existir
         await queryRunner.query(`CREATE EXTENSION IF NOT EXISTS vector;`);
-
-        // Opcional: Log para sabermos que rodou
-        console.log('✅ Extensão pgvector ativada com sucesso via Migration.');
     }
 
     public async down(queryRunner: QueryRunner): Promise<void> {
-        // Se precisarmos reverter (rollback)
-        await queryRunner.query(`DROP EXTENSION IF EXISTS vector;`);
+        // Não removemos a extensão no rollback para evitar perda de dados se outras tabelas usarem
+        // await queryRunner.query(`DROP EXTENSION IF EXISTS vector;`);
     }
 }

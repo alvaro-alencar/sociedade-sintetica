@@ -3,57 +3,119 @@
 import { useEffect, useState, useRef } from "react";
 import { apiFetch } from "@/lib/api";
 import { useParams } from "next/navigation";
-import { Send, Terminal, Activity, Cpu, Play, Pause, Zap, ArrowLeft } from "lucide-react";
+import { Send, Activity, ArrowLeft, Terminal, Cpu, Play, Pause, ArrowDown, Zap } from "lucide-react";
 import Link from "next/link";
-// ✅ IMPORTANTE: Usando os hooks padronizados do TanStack Query
-import { useThread, useThreadMessages } from "@/hooks/use-threads";
-import { useEntities } from "@/hooks/use-auth";
 
 export default function ThreadDetailPage() {
-  const params = useParams();
-  const id = params?.id as string;
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-
-  // Estado local apenas para UI interativa (inputs, loading de envio)
+  const { id } = useParams();
+  const [thread, setThread] = useState<any>(null);
+  const [messages, setMessages] = useState<any[]>([]);
+  const [allEntities, setAllEntities] = useState<any[]>([]);
+  const [myEntities, setMyEntities] = useState<any[]>([]);
   const [selectedEntity, setSelectedEntity] = useState("");
   const [newTopic, setNewTopic] = useState("");
-  const [isSending, setIsSending] = useState(false);
 
-  // ✅ TANSTACK QUERY: Gerenciamento de estado e Polling automático (2s)
-  const { data: thread, isLoading: isThreadLoading, refetch: refetchThread } = useThread(id);
-  const { data: messages = [], isLoading: isMsgsLoading } = useThreadMessages(id);
-  const { data: myEntities = [] } = useEntities();
+  // Refs e Estados de Scroll
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const [isAtBottom, setIsAtBottom] = useState(true); // Controla se o auto-scroll está ativo
+  const [showScrollButton, setShowScrollButton] = useState(false); // Mostra botão de "voltar pro fundo"
 
-  // Scroll automático inteligente (só quando novas mensagens chegarem)
+  const [isSimulating, setIsSimulating] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
+
+  // Carregamento inicial e Polling
   useEffect(() => {
-    scrollToBottom();
-  }, [messages.length]);
+    loadThread();
+    loadEntities();
 
-  // Seleciona a primeira entidade do usuário por padrão se nada estiver selecionado
+    const interval = setInterval(() => {
+      // Só faz o polling se a simulação não estiver pausada na UI (opcional, mas economiza request)
+      if (!isSimulating) {
+        loadThread(true);
+      }
+    }, 2000);
+
+    return () => clearInterval(interval);
+  }, [id]);
+
   useEffect(() => {
-    if (myEntities.length > 0 && !selectedEntity) {
-      setSelectedEntity(myEntities[0].id);
+    const fetchEntities = async () => {
+      try {
+        const all = await apiFetch("/entities");
+        const my = await apiFetch("/entities/my");
+        setAllEntities(all || []);
+        setMyEntities(my || []);
+        if (my && my.length > 0) setSelectedEntity(my[0].id);
+      } catch (e) { console.error(e); }
+    };
+    fetchEntities();
+  }, []);
+
+  // Lógica de Auto-Scroll Inteligente
+  useEffect(() => {
+    // Só rola para baixo se o usuário JÁ estiver lá embaixo
+    if (isAtBottom) {
+      scrollToBottom();
     }
-  }, [myEntities, selectedEntity]);
+  }, [messages, isAtBottom]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
-  // ✅ Lógica de Pause/Resume simplificada
+  const handleScroll = () => {
+    if (!scrollContainerRef.current) return;
+
+    const { scrollTop, scrollHeight, clientHeight } = scrollContainerRef.current;
+
+    // Calcula a distância do fundo
+    const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
+
+    // Se a distância for menor que 100px, consideramos que o usuário está no fundo
+    const isBottom = distanceFromBottom < 100;
+
+    setIsAtBottom(isBottom);
+    setShowScrollButton(!isBottom); // Mostra botão se não estiver no fundo
+  };
+
+  const loadEntities = async () => {
+    try {
+      const all = await apiFetch("/entities");
+      const my = await apiFetch("/entities/my");
+      setAllEntities(all || []);
+      setMyEntities(my || []);
+      if (my && my.length > 0) setSelectedEntity(my[0].id);
+    } catch (e) { console.error(e); }
+  };
+
+  const loadThread = async (silent = false) => {
+    try {
+      const data = await apiFetch(`/threads/${id}`);
+      setThread(data);
+      if (data.messages) setMessages(data.messages);
+
+      if (data.isSimulationActive !== undefined) {
+        setIsPaused(!data.isSimulationActive);
+      }
+    } catch (e) {
+      if (!silent) console.error("Erro ao carregar thread", e);
+    }
+  };
+
   const toggleSimulation = async () => {
-    if (!thread) return;
-    const newState = !thread.isSimulationActive;
+    const newState = !isPaused;
+    setIsPaused(newState);
 
     try {
       await apiFetch(`/threads/${id}/status`, {
         method: "PATCH",
-        body: JSON.stringify({ active: newState }),
+        body: JSON.stringify({ active: !newState }),
       });
-      // Força atualização imediata do cache
-      refetchThread();
+      loadThread(true);
     } catch (e) {
-      alert("Erro ao alterar status da simulação.");
+      alert("Erro ao alterar status");
+      setIsPaused(!newState);
     }
   };
 
@@ -61,55 +123,59 @@ export default function ThreadDetailPage() {
     if (!selectedEntity && myEntities.length === 0) return alert("Crie uma entidade primeiro.");
     if (!newTopic.trim()) return;
 
-    setIsSending(true);
-    const sender = selectedEntity || myEntities[0].id;
+    setIsSimulating(true);
+    const sender = selectedEntity || (myEntities[0] ? myEntities[0].id : "");
+
+    if (!sender) return alert("Selecione uma entidade.");
+
+    const tempMsg = {
+      id: "temp-" + Date.now(),
+      senderId: sender,
+      content: newTopic,
+      createdAt: new Date().toISOString(),
+      type: 'injection'
+    };
+
+    setMessages([...messages, tempMsg]);
+    setNewTopic("");
+
+    // Força scroll ao enviar mensagem
+    setIsAtBottom(true);
 
     try {
       await apiFetch(`/threads/${id}/messages`, {
         method: "POST",
         body: JSON.stringify({
           entityId: sender,
-          content: newTopic,
+          content: tempMsg.content,
           target: "broadcast",
         }),
       });
-      setNewTopic("");
-      // Não precisamos recarregar manualmente, o polling do TanStack vai pegar a msg
+      setTimeout(() => loadThread(true), 1000);
     } catch (e) {
       alert("Erro na injeção neural.");
     } finally {
-      setIsSending(false);
+      setIsSimulating(false);
     }
   };
 
-  const getEntityName = (senderId: string) => {
-    if (senderId === 'SYSTEM') return 'SOCKET DO SISTEMA';
-    // Tenta achar nas minhas entidades ou busca no cache geral (futuro: cache global de entities)
-    const entity = myEntities.find((e: any) => e.id === senderId);
-    return entity ? entity.name : `Nó Neural ${senderId.slice(0,4)}`;
+  const getEntityName = (id: string) => {
+    if (id === 'SYSTEM') return 'SOCKET DO SISTEMA';
+    const entity = allEntities.find(e => e.id === id);
+    return entity ? entity.name : `Nó Neural ${id.slice(0,4)}`;
   };
 
-  const getEntityModel = (senderId: string) => {
-    if (senderId === 'SYSTEM') return 'KERNEL';
-    const entity = myEntities.find((e: any) => e.id === senderId);
+  const getEntityModel = (id: string) => {
+    if (id === 'SYSTEM') return 'KERNEL';
+    const entity = allEntities.find(e => e.id === id);
     return entity ? entity.model : 'unknown';
   };
 
-  // Loading State Elegante
-  if (isThreadLoading) return (
-    <div className="flex h-screen items-center justify-center text-primary font-mono animate-pulse">
-      ESTABELECENDO LINK NEURAL...
-    </div>
-  );
-
-  if (!thread) return <div className="text-center mt-20 text-red-500 font-mono">FALHA NO LINK: Thread não encontrada.</div>;
-
-  const isPaused = !thread.isSimulationActive;
+  if (!thread) return <div className="flex h-screen items-center justify-center text-primary font-mono animate-pulse">ESTABELECENDO LINK NEURAL...</div>;
 
   return (
     <div className="h-[calc(100vh-120px)] max-w-6xl mx-auto px-4 flex flex-col animate-in fade-in duration-500">
 
-      {/* Header */}
       <div className="mb-6 pb-4 border-b border-white/10 flex items-center justify-between">
         <div className="flex items-center gap-4">
           <Link href="/threads" className="p-2 rounded-full hover:bg-white/10 text-gray-400 hover:text-white transition-colors">
@@ -143,68 +209,86 @@ export default function ThreadDetailPage() {
         </button>
       </div>
 
-      {/* Chat Area */}
-      <div className="flex-1 overflow-y-auto space-y-8 mb-6 p-8 rounded-2xl bg-black/40 border border-white/5 custom-scrollbar relative shadow-inner">
-        {/* Background Grid Effect */}
-        <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:40px_40px] [mask-image:radial-gradient(ellipse_at_center,black,transparent_80%)] pointer-events-none"></div>
+      <div className="flex-1 relative">
+        <div
+          ref={scrollContainerRef}
+          onScroll={handleScroll}
+          className="absolute inset-0 overflow-y-auto space-y-8 p-8 rounded-2xl bg-black/40 border border-white/5 custom-scrollbar shadow-inner"
+        >
+          {/* Fundo decorativo fixo dentro do scroll */}
+          <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:40px_40px] [mask-image:radial-gradient(ellipse_at_center,black,transparent_80%)] pointer-events-none"></div>
 
-        {messages.length === 0 && (
-          <div className="flex flex-col items-center justify-center h-full text-gray-600 opacity-50">
-            <Cpu className="w-16 h-16 mb-4 stroke-1 animate-spin-slow" />
-            <p className="font-mono text-sm">INICIALIZANDO DEBATE...</p>
-          </div>
-        )}
-
-        {messages.map((msg: any) => {
-          const isSystem = msg.senderId === 'SYSTEM';
-          const isInjection = msg.metadata?.type === 'system_injection' || isSystem;
-
-          return (
-            <div key={msg.id} className={`relative pl-8 group animate-in slide-in-from-bottom-2 duration-500 ${isSystem ? 'mb-12 mt-4' : ''}`}>
-              <div className="absolute left-[11px] top-8 bottom-[-32px] w-px bg-white/5 group-last:bottom-0"></div>
-
-              <div className={`absolute left-0 top-1 w-6 h-6 rounded-full border-2 flex items-center justify-center z-10 ${
-                isInjection
-                  ? 'bg-white border-white shadow-[0_0_15px_white]'
-                  : 'bg-gray-900 border-gray-700'
-              }`}>
-                {isInjection && <div className="w-2 h-2 bg-black rounded-full"></div>}
-              </div>
-
-              <div className="flex flex-col gap-2">
-                <div className="flex items-center gap-3">
-                  <span className={`text-xs font-bold tracking-wide uppercase flex items-center gap-2 ${
-                    isInjection ? 'text-white text-base' : 'text-primary'
-                  }`}>
-                    {isSystem && <Terminal className="w-4 h-4" />}
-                    {getEntityName(msg.senderId)}
-                  </span>
-                  {!isSystem && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/5 text-gray-500 font-mono border border-white/5">
-                        {getEntityModel(msg.senderId)}
-                    </span>
-                  )}
-                  <span className="text-[10px] text-gray-600 font-mono ml-auto">
-                    {new Date(msg.createdAt).toLocaleTimeString()}
-                  </span>
-                </div>
-
-                <div className={`p-5 rounded-lg text-sm leading-relaxed border backdrop-blur-sm shadow-xl ${
-                  isInjection
-                    ? 'bg-white/10 border-white/30 text-white font-medium'
-                    : 'bg-black/40 border-white/5 text-gray-300'
-                }`}>
-                  {msg.content}
-                </div>
-              </div>
+          {messages.length === 0 && (
+            <div className="flex flex-col items-center justify-center h-full text-gray-600 opacity-50">
+              <Cpu className="w-16 h-16 mb-4 stroke-1 animate-spin-slow" />
+              <p className="font-mono text-sm">INICIALIZANDO DEBATE...</p>
             </div>
-          );
-        })}
-        <div ref={messagesEndRef} />
+          )}
+
+          {messages.map((msg, index) => {
+            const isSystem = msg.senderId === 'SYSTEM';
+            const isInjection = msg.type === 'injection' || isSystem;
+
+            return (
+              <div key={msg.id} className={`relative pl-8 group animate-in slide-in-from-bottom-4 duration-700 ${isSystem ? 'mb-12 mt-4' : ''}`}>
+                <div className="absolute left-[11px] top-8 bottom-[-32px] w-px bg-white/5 group-last:bottom-0"></div>
+
+                <div className={`absolute left-0 top-1 w-6 h-6 rounded-full border-2 flex items-center justify-center z-10 ${
+                  isInjection
+                    ? 'bg-white border-white shadow-[0_0_15px_white]'
+                    : 'bg-gray-900 border-gray-700'
+                }`}>
+                  {isInjection && <div className="w-2 h-2 bg-black rounded-full"></div>}
+                </div>
+
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center gap-3">
+                    <span className={`text-xs font-bold tracking-wide uppercase flex items-center gap-2 ${
+                      isInjection ? 'text-white text-base' : 'text-primary'
+                    }`}>
+                      {isSystem && <Terminal className="w-4 h-4" />}
+                      {getEntityName(msg.senderId)}
+                    </span>
+                    {!isSystem && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/5 text-gray-500 font-mono border border-white/5">
+                          {getEntityModel(msg.senderId)}
+                      </span>
+                    )}
+                    <span className="text-[10px] text-gray-600 font-mono ml-auto">
+                      {new Date(msg.createdAt).toLocaleTimeString()}
+                    </span>
+                  </div>
+
+                  <div className={`p-5 rounded-lg text-sm leading-relaxed border backdrop-blur-sm shadow-xl ${
+                    isInjection
+                      ? 'bg-white/10 border-white/30 text-white font-medium'
+                      : 'bg-black/40 border-white/5 text-gray-300'
+                  }`}>
+                    <div className="whitespace-pre-wrap">{msg.content}</div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+          <div ref={messagesEndRef} />
+        </div>
+
+        {/* Botão flutuante para descer se o usuário subiu */}
+        {showScrollButton && (
+          <button
+            onClick={() => {
+              setIsAtBottom(true);
+              scrollToBottom();
+            }}
+            aria-label="Rolar para o final"
+            className="absolute bottom-4 right-8 p-3 bg-primary text-black rounded-full shadow-lg shadow-primary/30 hover:scale-110 transition-all animate-in fade-in zoom-in"
+          >
+            <ArrowDown className="w-5 h-5" />
+          </button>
+        )}
       </div>
 
-      {/* Input Area */}
-      <div className="glass-panel p-2 rounded-xl border border-primary/30 shadow-[0_0_30px_rgba(124,58,237,0.1)]">
+      <div className="glass-panel p-2 rounded-xl border border-primary/30 shadow-[0_0_30px_rgba(124,58,237,0.1)] mt-6">
         <div className="flex items-center bg-black/60 rounded-lg px-2">
           <div className="flex items-center border-r border-white/10 pr-3 mr-3 py-3">
             <span className="text-[10px] font-mono text-gray-500 mr-2">PROXY:</span>
@@ -215,32 +299,32 @@ export default function ThreadDetailPage() {
               onChange={(e) => setSelectedEntity(e.target.value)}
               title="Qual nó iniciará o processamento?"
             >
-              {myEntities.map((e: any) => <option key={e.id} value={e.id}>{e.name}</option>)}
+              {myEntities.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
             </select>
           </div>
 
           <div className="flex-1 relative">
             <input
-              className="w-full bg-transparent border-none text-white focus:outline-none font-mono text-sm py-3 pl-1 placeholder-gray-600"
+              className="w-full bg-transparent border-none text-white focus:outline-none font-mono text-sm py-3 pl-1"
               placeholder="Injetar novo tópico manual..."
               value={newTopic}
               onChange={(e) => setNewTopic(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && injectTopic()}
-              disabled={isSending || isPaused}
+              disabled={isSimulating || isPaused}
               autoComplete="off"
             />
           </div>
 
           <button
             onClick={injectTopic}
-            disabled={isSending || isPaused}
+            disabled={isSimulating || isPaused}
             className={`ml-2 p-2 rounded-lg transition-all duration-200 ${
-              newTopic.trim() && !isPaused && !isSending
+              newTopic.trim() && !isPaused
                 ? 'bg-primary text-white shadow-[0_0_15px_rgba(124,58,237,0.5)] hover:scale-105'
-                : 'bg-white/5 text-gray-600 cursor-not-allowed'
+                : 'bg-white/5 text-gray-600'
             }`}
           >
-            {isSending ? <Zap className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
+            {isSimulating ? <Zap className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
           </button>
         </div>
       </div>

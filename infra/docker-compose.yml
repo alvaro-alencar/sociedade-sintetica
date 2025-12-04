@@ -1,13 +1,16 @@
 version: '3.8'
+
 services:
   postgres:
-    image: ankane/pgvector:v0.5.1  # <--- MUDANÇA CRUCIAL AQUI
+    # Imagem com suporte a vetores (Vital para a nova fase)
+    image: ankane/pgvector:v0.5.1
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: sociedade_sintetica
     ports:
-      - "5432:5432"
+      # Mantive 5433 externamente para não quebrar sua conexão atual
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
